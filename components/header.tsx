@@ -8,7 +8,7 @@ export function Header() {
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <Image
-                src="/logo-1.png"
+                src="/LOGO1.png"
                 alt="Café Quindío"
                 width={240}
                 height={80}
