@@ -1,0 +1,18 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        # Ejecuta el servidor de desarrollo si AMPLIFY_USE_DEV=true, si no hace el build normal
+        - if [ "$AMPLIFY_USE_DEV" = "true" ]; then npm run dev; else npm run build; fi
+  artifacts:
+    # Next.js output directory for server-side rendering / static export
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
