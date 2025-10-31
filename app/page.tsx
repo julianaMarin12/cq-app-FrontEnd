@@ -139,7 +139,16 @@ export default function CashFlowSimulator() {
 
   const router = useRouter()
 
-  // Helper: resolver precio por selección (manual o por zona)
+  const getZonePrice = (productId?: string, zoneId?: string): number | undefined => {
+    if (!productId || !zoneId || zoneId === "otro") return undefined
+    const product = productsDatabase.find((p) => p.id === productId)
+    if (!product) return undefined
+    const zone = zones.find((z) => z.id === zoneId)
+    const zoneKey = zone?.key
+    const price = zoneKey ? (product.prices as any)[zoneKey] : undefined
+    return price && price > 0 ? price : undefined
+  }
+
   const resolvePrice = (sel: ProductSelection) => {
     if (!sel.productId) return 0
     const product = productsDatabase.find((p) => p.id === sel.productId)
@@ -303,7 +312,13 @@ export default function CashFlowSimulator() {
                           <Label className="text-sm font-semibold">Producto</Label>
                           <Select
                             value={it.productId}
-                            onValueChange={(v) => updateItem(idx, { productId: v })}
+                            onValueChange={(v) => {
+                              const defaultPrice = it.zoneId === "otro" ? undefined : getZonePrice(v, it.zoneId)
+                              updateItem(idx, {
+                                productId: v,
+                                manualPrice: defaultPrice !== undefined ? defaultPrice : it.manualPrice,
+                              })
+                            }}
                             disabled={!availableProducts.length}
                           >
                             <SelectTrigger className="w-full h-11">
@@ -323,12 +338,17 @@ export default function CashFlowSimulator() {
                           <Label className="text-sm font-semibold">Zona</Label>
                           <Select
                             value={it.zoneId}
-                            onValueChange={(v) =>
+                            onValueChange={(v) => {
+                              // al cambiar zona:
+                              // - si se elige "otro" => limpiar manualPrice (input vacío)
+                              // - si la zona tiene precio conocido => precargar ese precio
+                              // - si no tiene precio conocido => conservar manualPrice existente
+                              const defaultPrice = v === "otro" ? undefined : getZonePrice(it.productId, v)
                               updateItem(idx, {
                                 zoneId: v,
-                                ...(v !== "otro" ? { manualPrice: undefined } : {}),
+                                manualPrice: v === "otro" ? undefined : defaultPrice !== undefined ? defaultPrice : it.manualPrice,
                               })
-                            }
+                            }}
                             disabled={!it.productId}
                           >
                             <SelectTrigger className="w-full h-11">
@@ -371,7 +391,7 @@ export default function CashFlowSimulator() {
                                    const parsed = parseCurrencyInput(e.target.value)
                                    updateItem(idx, { manualPrice: parsed })
                                  }}
-                                 disabled={it.zoneId !== "otro"}
+                                 /* ahora siempre editable para permitir override manual */
                                  className="h-11 pl-8 w-full"
                                />
                              </div>
