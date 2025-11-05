@@ -20,6 +20,12 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
   const metrics = calculateMetrics(investment, localSelections, years)
   const irrPercent = metrics.irr
 
+  // formateadores: moneda con separadores y signo $, y número con separadores
+  const formatCurrency = (v?: number) =>
+    v == null ? "-" : `$${v.toLocaleString("es-CO", { maximumFractionDigits: 0 })}`
+
+  const formatNumber = (v?: number) => (v == null ? "-" : v.toLocaleString("es-CO"))
+
   const [showModal, setShowModal] = useState(false)
   const [modalType, setModalType] = useState<"warning" | "success" | null>(null)
   useEffect(() => {
@@ -197,7 +203,10 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
                                 <div className="flex flex-wrap gap-2 text-sm text-slate-800">
                                   {s.overrides.map((o: any, idx: number) => (
                                     <span key={idx} className="px-2 py-0.5 bg-white/40 rounded text-slate-800">
-                                      {o.productId}: {o.currentValue} → {o.suggestedValue}
+                                      {o.productId}:{" "}
+                                      {s.type === "price"
+                                        ? `${formatCurrency(o.currentValue)} → ${formatCurrency(o.suggestedValue)}`
+                                        : `${formatNumber(o.currentValue)} → ${formatNumber(o.suggestedValue)}`}
                                     </span>
                                   ))}
                                 </div>
@@ -205,7 +214,8 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
                               </div>
                             ) : (
                               <div className="mt-2 text-sm text-slate-800">
-                                {s.currentValue} → <strong>{s.suggestedValue}</strong>
+                                {s.type === "price" ? formatCurrency(s.currentValue) : formatNumber(s.currentValue)} →{" "}
+                                <strong>{s.type === "price" ? formatCurrency(s.suggestedValue) : formatNumber(s.suggestedValue)}</strong>
                                 {s.detail && <div className="mt-1 text-xs text-slate-600">{s.detail}</div>}
                               </div>
                             )}
