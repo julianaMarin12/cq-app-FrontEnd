@@ -246,20 +246,18 @@ function computeIrrFromCashFlows(cashFlows: number[]): number {
   return irr
 }
 
-/* Agregado: intenta sugerir ajustes (precio o unidades) para lograr TIR > 20%.
-   Devuelve array de Suggestion (puede estar vacío si no encuentra cambios factibles). */
 function suggestAdjustments(
   investment: number,
   productSelections: ProductSelection[],
   years: number,
 ): Suggestion[] {
-  const maxPriceFactor = 5 // hasta 5x el precio individual
-  const maxUnitsFactor = 10 // hasta 10x las unidades
-  const eps = 1e-4
-  const targetIrr = 0.2 // objetivo: 20%
+  const suggestions: Suggestion[] = []
+  const maxPriceFactor = 5 
+  const maxUnitsFactor = 10 
+  const eps = 1e-6
+  const targetIrr = 0.2 
   const maxSuggestions = 2
 
-  // helpers
   const irrForOverrideAtIndex = (idx: number, override: Partial<ProductSelection>) => {
     const modified = productSelections.map((s, i) => (i === idx ? { ...s, ...override } : { ...s }))
     const data = generateCashFlowData(investment, modified, years)
@@ -277,7 +275,6 @@ function suggestAdjustments(
   const individualSuggestions: Suggestion[] = []
   const groupSuggestions: Suggestion[] = []
 
-  // Individual suggestions (precio / unidades)
   for (let idx = 0; idx < productSelections.length; idx++) {
     const sel = productSelections[idx]
     const product = getProductById(sel.productId)
@@ -286,14 +283,13 @@ function suggestAdjustments(
     const basePrice = getPriceForZone(product, sel.zoneId, sel.manualPrice)
     const baseQty = sel.quantity
 
-    // precio individual
     if (basePrice > 0) {
       let low = 1
       let high = maxPriceFactor
       let foundFactor: number | null = null
 
       if (irrForOverrideAtIndex(idx, { manualPrice: basePrice * high }) > targetIrr) {
-        for (let iter = 0; iter < 30; iter++) {
+        for (let iter = 0; iter < 60; iter++) {
           const mid = (low + high) / 2
           const irr = irrForOverrideAtIndex(idx, { manualPrice: basePrice * mid })
           if (irr > targetIrr) {
@@ -328,7 +324,7 @@ function suggestAdjustments(
       let foundQty: number | null = null
 
       if (irrForOverrideAtIndex(idx, { quantity: high }) > targetIrr) {
-        for (let iter = 0; iter < 40; iter++) {
+        for (let iter = 0; iter < 80; iter++) {
           const mid = Math.floor((low + high) / 2)
           if (mid === low) break
           const irr = irrForOverrideAtIndex(idx, { quantity: mid })
@@ -356,10 +352,7 @@ function suggestAdjustments(
     }
   }
 
-  // Combinados proporcionales para 2+ productos
-  const validSelections = productSelections
-    .map((s, i) => ({ ...s, index: i }))
-    .filter((s) => s.productId && s.quantity > 0)
+  const validSelections = productSelections.map((s, i) => ({ ...s, index: i })).filter((s) => s.productId && s.quantity > 0)
 
   if (validSelections.length >= 2) {
     const bases = validSelections.map((vs) => {
@@ -372,13 +365,12 @@ function suggestAdjustments(
     if (totalRevenue > 0) {
       const shares = bases.map((b) => ({ ...b, share: (b.price * b.qty) / totalRevenue }))
 
-      // precios combinados
+      // precios combinados (busqueda k)
       let lowK = 0
       let highK = 5
       let foundK: number | null = null
 
-      const maxMultiplierCheck = (k: number) =>
-        shares.every((s) => 1 + k * s.share <= maxPriceFactor)
+      const maxMultiplierCheck = (k: number) => shares.every((s) => 1 + k * s.share <= maxPriceFactor)
 
       if (maxMultiplierCheck(highK)) {
         if (
@@ -391,7 +383,7 @@ function suggestAdjustments(
             }),
           ) > targetIrr
         ) {
-          for (let iter = 0; iter < 40; iter++) {
+          for (let iter = 0; iter < 80; iter++) {
             const mid = (lowK + highK) / 2
             const overrides = productSelections.map((s, i) => {
               const sh = shares.find((x) => x.index === i)
@@ -406,7 +398,7 @@ function suggestAdjustments(
             } else {
               lowK = mid
             }
-            if (highK - lowK < 1e-5) break
+            if (highK - lowK < 1e-6) break
           }
         }
       } else {
@@ -423,7 +415,7 @@ function suggestAdjustments(
               }),
             ) > targetIrr
           ) {
-            for (let iter = 0; iter < 40; iter++) {
+            for (let iter = 0; iter < 80; iter++) {
               const mid = (lowK + highK) / 2
               const overrides = productSelections.map((s, i) => {
                 const sh = shares.find((x) => x.index === i)
@@ -438,7 +430,7 @@ function suggestAdjustments(
               } else {
                 lowK = mid
               }
-              if (highK - lowK < 1e-5) break
+              if (highK - lowK < 1e-6) break
             }
           }
         }
@@ -449,7 +441,8 @@ function suggestAdjustments(
           const sh = shares.find((x) => x.index === i)
           if (!sh) return null
           const suggestedPrice = Math.round(sh.price * (1 + foundK * sh.share) * 100) / 100
-          return { suggestedPrice, sh }
+          const pct = sh.price > 0 ? Math.round(((suggestedPrice / sh.price) - 1) * 100) : 0
+          return { suggestedPrice, sh, pct }
         }).filter(Boolean as any)
 
         const finalIrr = irrForOverrides(
@@ -460,11 +453,11 @@ function suggestAdjustments(
           }),
         )
 
-        // crear sugerencias individuales derivadas del combinado (pero no las añadimos directamente al resultado)
         for (const ov of overrides) {
           if (!ov || !(ov as any).sh) continue
           const sh = (ov as any).sh
           const suggestedPrice = (ov as any).suggestedPrice as number
+          const pct = (ov as any).pct as number
           individualSuggestions.push({
             type: "price",
             productId: sh.productId,
@@ -472,7 +465,7 @@ function suggestAdjustments(
             currentValue: sh.price,
             suggestedValue: suggestedPrice,
             estimatedIrr: finalIrr,
-            detail: `Ajuste combinado proporcional (k=${foundK.toFixed(4)})`,
+            detail: `+${pct}% (derivado combinado)`,
           })
         }
 
@@ -483,6 +476,7 @@ function suggestAdjustments(
           suggestedValue: ov.suggestedPrice,
         }))
 
+        const detailParts = overrides.map((ov: any) => `${ov.sh.productId} +${ov.pct}%`)
         groupSuggestions.push({
           type: "price",
           productId: "__group__",
@@ -490,12 +484,12 @@ function suggestAdjustments(
           currentValue: 0,
           suggestedValue: 0,
           estimatedIrr: finalIrr,
-          detail: `Ajuste combinado proporcional para todos los productos (k=${foundK.toFixed(4)})`,
+          detail: `Ajuste combinado de precios: ${detailParts.join(", ")}`,
           overrides: groupOverrides,
         })
       }
 
-      // unidades combinadas
+      // unidades combinadas (proporcional a share), pero exponer % de aumento por producto
       let lowKU = 0
       let highKU = 10
       let foundKU: number | null = null
@@ -510,7 +504,7 @@ function suggestAdjustments(
           }),
         ) > targetIrr
       ) {
-        for (let iter = 0; iter < 40; iter++) {
+        for (let iter = 0; iter < 80; iter++) {
           const mid = (lowKU + highKU) / 2
           const overrides = productSelections.map((s, i) => {
             const sh = shares.find((x) => x.index === i)
@@ -525,17 +519,18 @@ function suggestAdjustments(
           } else {
             lowKU = mid
           }
-          if (highKU - lowKU < 1e-5) break
+          if (highKU - lowKU < 1e-6) break
         }
       }
 
       if (foundKU !== null) {
         const overridesQty = productSelections.map((s, i) => {
           const sh = shares.find((x) => x.index === i)
-          if (!sh) return {}
+          if (!sh) return null
           const suggestedQty = Math.ceil(sh.qty * (1 + foundKU * sh.share))
-          return { suggestedQty, sh }
-        })
+          const pct = Math.round(((suggestedQty / sh.qty) - 1) * 100)
+          return { suggestedQty, sh, pct }
+        }).filter(Boolean as any)
 
         const finalIrrQty = irrForOverrides(
           productSelections.map((s, i) => {
@@ -549,6 +544,7 @@ function suggestAdjustments(
           if (!ov || !(ov as any).sh) continue
           const sh = (ov as any).sh
           const suggestedQty = (ov as any).suggestedQty as number
+          const pct = (ov as any).pct as number
           individualSuggestions.push({
             type: "units",
             productId: sh.productId,
@@ -556,12 +552,11 @@ function suggestAdjustments(
             currentValue: sh.qty,
             suggestedValue: suggestedQty,
             estimatedIrr: finalIrrQty,
-            detail: `Ajuste combinado proporcional unidades (k=${foundKU.toFixed(4)})`,
+            detail: `+${pct}% (derivado combinado)`,
           })
         }
 
         const groupOverridesQty = overridesQty
-          .filter((o: any) => o && o.sh)
           .map((ov: any) => ({
             productId: ov.sh.productId,
             zoneId: ov.sh.zoneId,
@@ -569,6 +564,7 @@ function suggestAdjustments(
             suggestedValue: ov.suggestedQty,
           }))
 
+        const detailPartsQty = overridesQty.map((ov: any) => `${ov.sh.productId} +${ov.pct}%`)
         groupSuggestions.push({
           type: "units",
           productId: "__group__",
@@ -576,36 +572,53 @@ function suggestAdjustments(
           currentValue: 0,
           suggestedValue: 0,
           estimatedIrr: finalIrrQty,
-          detail: `Ajuste combinado proporcional unidades para todos (k=${foundKU.toFixed(4)})`,
+          detail: `Ajuste combinado de unidades: ${detailPartsQty.join(", ")}`,
           overrides: groupOverridesQty,
         })
       }
     }
   }
 
-  // Selección final de sugerencias a devolver
-  // Si hay exactamente 2 productos, preferir sugerencias de grupo (si existen)
-  if (validSelections.length === 2 && groupSuggestions.length > 0) {
-    return groupSuggestions.slice(0, maxSuggestions)
-  }
-
-  // Si no, priorizar sugerencias de grupo, luego individuales por estimatedIrr desc
+  // Selección final: priorizar combinadas cuando hay 2+, devolver hasta 2 sugerencias
   const sortedIndividual = individualSuggestions.sort((a, b) => (b.estimatedIrr || 0) - (a.estimatedIrr || 0))
   const sortedGroup = groupSuggestions.sort((a, b) => (b.estimatedIrr || 0) - (a.estimatedIrr || 0))
 
-  const combined: Suggestion[] = []
-  // primero añadir sugerencias de grupo (máximo maxSuggestions)
-  for (const g of sortedGroup) {
-    if (combined.length >= maxSuggestions) break
-    combined.push(g)
-  }
-  // luego completar con individuales ordenadas por irr
-  for (const ind of sortedIndividual) {
-    if (combined.length >= maxSuggestions) break
-    combined.push(ind)
+  const final: Suggestion[] = []
+
+  if (validSelections.length >= 2) {
+    // intentar retornar ambas combinadas (precio + unidades) si existen
+    const groupPrice = sortedGroup.find((g) => g.type === "price")
+    const groupUnits = sortedGroup.find((g) => g.type === "units")
+    if (groupPrice) final.push(groupPrice)
+    if (groupUnits && final.length < maxSuggestions) final.push(groupUnits)
+
+    // completar con mejores individuales si faltan, pero priorizar no exceder maxSuggestions
+    for (const ind of sortedIndividual) {
+      if (final.length >= maxSuggestions) break
+      if (!final.find((f) => f.productId === ind.productId && f.type === ind.type)) final.push(ind)
+    }
+
+    // fallback: cualquier group adicional (si aún falta)
+    for (const g of sortedGroup) {
+      if (final.length >= maxSuggestions) break
+      if (!final.includes(g)) final.push(g)
+    }
+
+    // asegurar máximo de 2 y que si son de tipo price no superar 2
+    return final.slice(0, maxSuggestions)
   }
 
-  return combined
+  // caso general: priorizar grupo luego individuales, limitar a maxSuggestions y si son de precio mantener máximo 2
+  for (const g of sortedGroup) {
+    if (final.length >= maxSuggestions) break
+    final.push(g)
+  }
+  for (const ind of sortedIndividual) {
+    if (final.length >= maxSuggestions) break
+    final.push(ind)
+  }
+
+  return final.slice(0, maxSuggestions)
 }
 
 export function calculateMetrics(
