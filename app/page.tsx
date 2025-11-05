@@ -501,6 +501,10 @@ export default function CashFlowSimulator() {
                       years={Number.parseInt(years)}
                       selections={items}
                       simulationVersion={simulationVersion}
+                      onApplySuggestion={(updated) => {
+                        // Actualizar el estado padre para que los inputs controlados muestren los nuevos valores
+                        setItems(updated)
+                      }}
                     />
                   </div>
 
