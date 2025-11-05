@@ -8,9 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Trash, Plus, RotateCw, Printer } from "lucide-react"
-import { CashFlowChart } from "@/components/cash-flow-chart"
 import { MetricsCards } from "@/components/metrics-cards"
-import { CashFlowTable } from "@/components/cash-flow-table"
 import { Header } from "@/components/header"
 import {
   zones,
@@ -502,29 +500,11 @@ export default function CashFlowSimulator() {
                       selections={items}
                       simulationVersion={simulationVersion}
                       onApplySuggestion={(updated) => {
-                        // Actualizar el estado padre para que los inputs controlados muestren los nuevos valores
                         setItems(updated)
                       }}
                     />
                   </div>
 
-                  <div className="w-full">
-                    <CashFlowTable
-                      investment={Number.parseFloat(investment)}
-                      years={Number.parseInt(years)}
-                      selections={items}
-                    />
-                  </div>
-
-                  <div className="w-full">
-                    <div className="w-full h-96">
-                      <CashFlowChart
-                        investment={Number.parseFloat(investment)}
-                        years={Number.parseInt(years)}
-                        selections={items}
-                      />
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
