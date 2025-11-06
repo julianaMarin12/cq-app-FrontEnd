@@ -26,6 +26,8 @@ interface MachineEntry { id: string; type: string; description: string; priceBef
 const machinesDatabase = machinesJson as MachineEntry[]
 
 export default function CashFlowSimulator() {
+	const router = useRouter()
+
   const [categoria, setCategoria] = useState("")
   const [linea, setLinea] = useState("")
   const [sublinea, setSublinea] = useState("")
