@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation"
 import type React from "react"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -20,6 +20,10 @@ import {
 import { productsDatabase } from "@/lib/products-data" 
 import { calculateMetrics } from "@/lib/cash-flow-calculator"
 import type { ProductSelection } from "@/lib/cash-flow-calculator"
+import machinesJson from "@/lib/machines-data.json"
+
+interface MachineEntry { id: string; type: string; description: string; priceBeforeIva: number }
+const machinesDatabase = machinesJson as MachineEntry[]
 
 export default function CashFlowSimulator() {
   const [categoria, setCategoria] = useState("")
@@ -35,6 +39,9 @@ export default function CashFlowSimulator() {
   const [items, setItems] = useState<ProductSelection[]>([
     { productId: "", zoneId: "", quantity: 1, manualPrice: undefined },
   ])
+
+  const [machinesSelected, setMachinesSelected] = useState<{ machineId: string; quantity: number }[]>([])
+  const [machinePicker, setMachinePicker] = useState<string>("")
 
   const categorias = useMemo(() => getCategories(), [])
   const lineas = useMemo(() => (categoria ? getLineasByCategoria(categoria) : []), [categoria])
@@ -111,15 +118,52 @@ export default function CashFlowSimulator() {
     setItems((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const addMachine = () => {
+    if (!machinePicker) return
+    setMachinesSelected((prev) => [...prev, { machineId: machinePicker, quantity: 1 }])
+    setMachinePicker("")
+  }
+
+  const updateMachine = (idx: number, patch: Partial<{ machineId: string; quantity: number }>) =>
+    setMachinesSelected((prev) => prev.map((m, i) => (i === idx ? { ...m, ...patch } : m)))
+
+  const removeMachine = (idx: number) => setMachinesSelected((prev) => prev.filter((_, i) => i !== idx))
+
+  const formatCurrencyForDisplay = (v?: number) => (v == null ? "-" : `$${Number(v).toLocaleString("es-CO")}`)
+  const parseCurrency = (text: string) => {
+    const cleaned = String(text).replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, "")
+    const n = Number(cleaned)
+    return Number.isFinite(n) ? n : undefined
+  }
+
+  const getZonePrice = (productId?: string, zoneId?: string): number | undefined => {
+    if (!productId || !zoneId || zoneId === "otro") return undefined
+    const product = productsDatabase.find((p) => p.id === productId)
+    if (!product) return undefined
+    const zone = zones.find((z) => z.id === zoneId)
+    const zoneKey = zone?.key
+    const price = zoneKey ? (product.prices as any)[zoneKey] : undefined
+    return price && price > 0 ? price : undefined
+  }
+
   const handleSimulate = () => {
     const invOk = investment && Number.parseFloat(investment) > 0
     const yearsOk = !!years
     const itemsOk = items.some((it) => it.productId && it.zoneId && it.quantity > 0)
     if (invOk && yearsOk && itemsOk) {
-      // calcular métricas aquí y guardar la TIR para controlar el botón de imprimir
-      const metrics = calculateMetrics(Number.parseFloat(investment || "0"), items, Number.parseInt(years || "0"))
-      setLastIrr(metrics.irr) // metrics.irr ya viene en porcentaje (p.ej. 30.5)
-      // marcar una nueva ejecución y mostrar resultados
+      const machinesInvestment = machinesSelected.reduce((acc, m) => {
+        const entry = machinesDatabase.find((x) => x.id === m.machineId)
+        const unit = entry ? entry.priceBeforeIva : 0
+        return acc + unit * (m.quantity || 0)
+      }, 0)
+
+      const totalInvestment = Number.parseFloat(investment || "0") + machinesInvestment
+      const metrics = calculateMetrics(totalInvestment, items, Number.parseInt(years || "0"))
+      let irrValue = metrics.irr
+      if (typeof irrValue === "number" && Math.abs(irrValue) > 1) {
+        irrValue = irrValue / 100
+      }
+      setLastIrr(irrValue)
       setSimulationVersion((v) => v + 1)
       setShowResults(true)
     }
@@ -132,46 +176,54 @@ export default function CashFlowSimulator() {
     setInvestment("")
     setYears("")
     setItems([{ productId: "", zoneId: "", quantity: 1, editPrice: false }])
+    setMachinesSelected([])
     setShowResults(false)
+    setLastIrr(null)
+    setSimulationVersion(0)
   }
 
-  const router = useRouter()
 
-  const getZonePrice = (productId?: string, zoneId?: string): number | undefined => {
-    if (!productId || !zoneId || zoneId === "otro") return undefined
-    const product = productsDatabase.find((p) => p.id === productId)
-    if (!product) return undefined
-    const zone = zones.find((z) => z.id === zoneId)
-    const zoneKey = zone?.key
-    const price = zoneKey ? (product.prices as any)[zoneKey] : undefined
-    return price && price > 0 ? price : undefined
-  }
+  const goToPrint = async () => {
+    const machinesPayload = machinesSelected.map((m) => {
+      const entry = machinesDatabase.find((x) => x.id === m.machineId)
+      return {
+        machineId: m.machineId,
+        description: entry?.description ?? m.machineId,
+        unitPriceBeforeIva: entry?.priceBeforeIva ?? 0,
+        quantity: m.quantity,
+      }
+    })
+    const machinesInvestment = machinesPayload.reduce((acc, m) => acc + (m.unitPriceBeforeIva * (m.quantity || 0)), 0)
 
-  const resolvePrice = (sel: ProductSelection) => {
-    if (!sel.productId) return 0
-    const product = productsDatabase.find((p) => p.id === sel.productId)
-    if (!product) return 0
-    if (sel.manualPrice !== undefined) return sel.manualPrice
-    if (sel.zoneId === "otro") return sel.manualPrice ?? 0
-    const zone = zones.find((z) => z.id === sel.zoneId)
-    const zoneKey = zone?.key
-    const price = zoneKey ? (product.prices as any)[zoneKey] : 0
-    return price && price > 0 ? price : 0
-  }
-
-  // Guardar datos en sessionStorage y navegar a /print
-  const goToPrint = () => {
     const payload = {
       items: items.filter((s) => s.productId && s.quantity > 0),
       years: Number.parseInt(years || "0"),
+      machines: machinesPayload,
+      machinesInvestment,
+      totalInvestment: Number.parseInt(investment || "0") + machinesInvestment,
     }
+
     try {
       sessionStorage.setItem("cq_print_payload", JSON.stringify(payload))
-      router.push("/print")
     } catch {
-      // ignore
+    }
+
+    try {
+      await router.push("/print")
+    } catch {
+      try {
+        window.location.href = "/print"
+      } catch {
+      }
     }
   }
+
+  const machinesInvestmentComputed = machinesSelected.reduce((acc, m) => {
+    const entry = machinesDatabase.find((x) => x.id === m.machineId)
+    const unit = entry ? entry.priceBeforeIva : 0
+    return acc + unit * (m.quantity || 0)
+  }, 0)
+  const totalInvestmentComputed = Number.parseFloat(investment || "0") + machinesInvestmentComputed
 
   return (
     <div
@@ -337,10 +389,6 @@ export default function CashFlowSimulator() {
                           <Select
                             value={it.zoneId}
                             onValueChange={(v) => {
-                              // al cambiar zona:
-                              // - si se elige "otro" => limpiar manualPrice (input vacío)
-                              // - si la zona tiene precio conocido => precargar ese precio
-                              // - si no tiene precio conocido => conservar manualPrice existente
                               const defaultPrice = v === "otro" ? undefined : getZonePrice(it.productId, v)
                               updateItem(idx, {
                                 zoneId: v,
@@ -411,6 +459,76 @@ export default function CashFlowSimulator() {
                 </div>
               </div>
 
+              {/* Sección: Selección y edición de Máquinas */}
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-full">
+                    <Label className="text-sm font-semibold">Agregar máquina</Label>
+                    <div className="flex gap-2">
+                      <Select value={machinePicker} onValueChange={setMachinePicker}>
+                        <SelectTrigger className="w-full h-11">
+                          <SelectValue placeholder="Seleccionar máquina..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {machinesDatabase.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.description}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Button onClick={addMachine} className="h-11" title="Agregar máquina">
+                        Agregar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista editable de máquinas seleccionadas */}
+                {machinesSelected.length > 0 && (
+                  <div className="space-y-2">
+                    {machinesSelected.map((m, mi) => {
+                      const entry = machinesDatabase.find((x) => x.id === m.machineId)
+                      const unit = entry ? entry.priceBeforeIva : 0
+                      const computedTotal = unit * (m.quantity || 0)
+                      return (
+                        <div key={mi} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                          <div className="md:col-span-5">
+                            <div className="text-sm font-medium">{entry?.description ?? m.machineId}</div>
+                            <div className="text-xs text-gray-600">Valor unitario (antes IVA): {formatCurrencyForDisplay(unit)}</div>
+                          </div>
+
+                          <div className="md:col-span-2">
+                            <Label className="text-xs">Cantidad</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={String(m.quantity)}
+                              onChange={(e) => updateMachine(mi, { quantity: Math.max(1, Number(e.target.value || 1)) })}
+                              className="h-9"
+                            />
+                          </div>
+
+                          <div className="md:col-span-1 text-right">
+                            <Label className="text-xs">Total</Label>
+                            <div className="font-medium">{formatCurrencyForDisplay(computedTotal)}</div>
+                          </div>
+
+                          <div className="md:col-span-1 flex justify-end">
+                            <Button size="sm" variant="destructive" onClick={() => removeMachine(mi)} className="h-9 w-9 p-0">
+                              <Trash className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {/* Totales ocultos: no mostrar "Total inversión máquinas" */}
+                   </div>
+                 )}
+               </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="space-y-3">
                   <Label htmlFor="investment" className="text-sm font-semibold text-gray-700">
@@ -428,6 +546,15 @@ export default function CashFlowSimulator() {
                     />
                   </div>
                   {investment && <p className="text-xs text-gray-500 mt-1">{getInvestmentMagnitude(investment)}</p>}
+                </div>
+
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold text-gray-700">Total inversión (incluye máquinas)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                    <Input id="totalInvestment" type="text" value={formatInvestment(String(Math.round(totalInvestmentComputed)))} readOnly className="h-11 pl-8 border-gray-300 bg-gray-50" />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Suma inversión inicial + precio máquinas × cantidad</p>
                 </div>
 
                 <div className="space-y-3">
@@ -456,17 +583,26 @@ export default function CashFlowSimulator() {
                 </div>
 
                 <div className="flex items-center">
-                  {showResults && lastIrr !== null && lastIrr > 20 && (
-                    <Button
-                      size="sm"
-                      onClick={() => goToPrint()}
-                      className="inline-flex items-center gap-2 px-3 py-2 bg-[#25ABB9] text-white hover:bg-[#1e8a95]"
-                      title="Imprimir"
-                    >
-                      <Printer className="w-4 h-4" />
-                      Imprimir
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    onClick={() => goToPrint()}
+                    disabled={!(showResults && lastIrr !== null && lastIrr >= 0.2)}
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-md transition ${
+                      showResults && lastIrr !== null && lastIrr >= 0.2
+                        ? "bg-[#25ABB9] text-white hover:bg-[#1e8a95]"
+                        : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                    }`}
+                    title={
+                      showResults
+                        ? lastIrr !== null && lastIrr >= 0.2
+                          ? "Imprimir"
+                          : "No disponible: la TIR no alcanza 20%"
+                        : "Ejecuta 'Simular' para habilitar impresión"
+                    }
+                  >
+                    <Printer className="w-4 h-4" />
+                    Imprimir
+                  </Button>
                 </div>
 
                 <div />
@@ -495,7 +631,7 @@ export default function CashFlowSimulator() {
                 <div className="space-y-8 pt-8">
                   <div className="w-full">
                     <MetricsCards
-                      investment={Number.parseFloat(investment)}
+                      investment={totalInvestmentComputed}
                       years={Number.parseInt(years)}
                       selections={items}
                       simulationVersion={simulationVersion}

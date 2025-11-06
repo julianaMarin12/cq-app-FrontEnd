@@ -17,7 +17,7 @@ interface Metrics {
   roi: number
   paybackPeriod: number
   totalCashFlow: number
-  suggestions?: Suggestion[] // agregado para devolver recomendaciones cuando TIR <= 0
+  suggestions?: Suggestion[]  
 }
 
 interface Suggestion {
@@ -26,9 +26,8 @@ interface Suggestion {
   zoneId: string
   currentValue: number
   suggestedValue: number
-  estimatedIrr: number // en decimal
+  estimatedIrr: number
   detail?: string
-  // si es una sugerencia combinada para varios productos:
   overrides?: { productId: string; zoneId: string; currentValue: number; suggestedValue: number }[]
 }
 
@@ -48,7 +47,6 @@ function getProductById(productId: string): Product | undefined {
 }
 
 function getPriceForZone(product: Product, zoneId: string, manualPrice?: number): number {
-  // usar manualPrice si fue definido por el usuario (override)
   if (manualPrice !== undefined) {
     return manualPrice
   }
@@ -65,7 +63,6 @@ function getPriceForZone(product: Product, zoneId: string, manualPrice?: number)
   return price && price > 0 ? price : 0
 }
 
-// Ahora recibe una lista de selecciones de productos
 export function generateCashFlowData(
   investment: number,
   productSelections: ProductSelection[],
@@ -74,7 +71,6 @@ export function generateCashFlowData(
   const data: CashFlowData[] = []
   let cumulative = -investment
 
-  // Selecciones válidas
   const validSelections = productSelections.filter((s) => !!s.productId && s.quantity > 0)
   if (!validSelections.length) {
     return [
@@ -102,7 +98,6 @@ export function generateCashFlowData(
     cumulativeCashFlow: cumulative,
   })
 
-  // Inicializar estado por producto: precio actual, costo actual, aumento anual y cantidad
   const states = validSelections
     .map((sel) => {
       const product = getProductById(sel.productId)
@@ -317,7 +312,6 @@ function suggestAdjustments(
       }
     }
 
-    // unidades individual
     if (baseQty > 0) {
       let low = baseQty
       let high = Math.max(Math.ceil(baseQty * maxUnitsFactor), baseQty + 100)
@@ -365,7 +359,6 @@ function suggestAdjustments(
     if (totalRevenue > 0) {
       const shares = bases.map((b) => ({ ...b, share: (b.price * b.qty) / totalRevenue }))
 
-      // precios combinados (busqueda k)
       let lowK = 0
       let highK = 5
       let foundK: number | null = null
@@ -489,7 +482,6 @@ function suggestAdjustments(
         })
       }
 
-      // unidades combinadas (proporcional a share), pero exponer % de aumento por producto
       let lowKU = 0
       let highKU = 10
       let foundKU: number | null = null
@@ -579,36 +571,30 @@ function suggestAdjustments(
     }
   }
 
-  // Selección final: priorizar combinadas cuando hay 2+, devolver hasta 2 sugerencias
   const sortedIndividual = individualSuggestions.sort((a, b) => (b.estimatedIrr || 0) - (a.estimatedIrr || 0))
   const sortedGroup = groupSuggestions.sort((a, b) => (b.estimatedIrr || 0) - (a.estimatedIrr || 0))
 
   const final: Suggestion[] = []
 
   if (validSelections.length >= 2) {
-    // intentar retornar ambas combinadas (precio + unidades) si existen
     const groupPrice = sortedGroup.find((g) => g.type === "price")
     const groupUnits = sortedGroup.find((g) => g.type === "units")
     if (groupPrice) final.push(groupPrice)
     if (groupUnits && final.length < maxSuggestions) final.push(groupUnits)
 
-    // completar con mejores individuales si faltan, pero priorizar no exceder maxSuggestions
     for (const ind of sortedIndividual) {
       if (final.length >= maxSuggestions) break
       if (!final.find((f) => f.productId === ind.productId && f.type === ind.type)) final.push(ind)
     }
 
-    // fallback: cualquier group adicional (si aún falta)
     for (const g of sortedGroup) {
       if (final.length >= maxSuggestions) break
       if (!final.includes(g)) final.push(g)
     }
 
-    // asegurar máximo de 2 y que si son de tipo price no superar 2
     return final.slice(0, maxSuggestions)
   }
 
-  // caso general: priorizar grupo luego individuales, limitar a maxSuggestions y si son de precio mantener máximo 2
   for (const g of sortedGroup) {
     if (final.length >= maxSuggestions) break
     final.push(g)
@@ -636,7 +622,6 @@ export function calculateMetrics(
 
   const cashFlows: number[] = [-investment, ...data.slice(1).map((d) => d.netCashFlow)]
 
-  // Usar la función reutilizable para obtener el TIR (decimal)
   const irrDecimal = computeIrrFromCashFlows(cashFlows)
 
   const totalCashFlow = data[data.length - 1].cumulativeCashFlow
@@ -651,7 +636,6 @@ export function calculateMetrics(
   }
   if (paybackPeriod === 0) paybackPeriod = years
 
-  // Si el TIR es menor o igual a 20% (0.2), generar sugerencias
   let suggestions: Suggestion[] | undefined = undefined
   if (!(isFinite(irrDecimal) && irrDecimal > 0.2)) {
     suggestions = suggestAdjustments(investment, productSelections, years)

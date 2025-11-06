@@ -18,9 +18,12 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
   }, [selections])
 
   const metrics = calculateMetrics(investment, localSelections, years)
-  const irrPercent = metrics.irr
+  const normalizedIrr = (() => {
+    const v = metrics.irr ?? 0
+    if (typeof v !== "number") return 0
+    return Math.abs(v) > 1 ? v / 100 : v
+  })()
 
-  // formateadores: moneda con separadores y signo $, y número con separadores
   const formatCurrency = (v?: number) =>
     v == null ? "-" : `$${v.toLocaleString("es-CO", { maximumFractionDigits: 0 })}`
 
@@ -30,7 +33,7 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
   const [modalType, setModalType] = useState<"warning" | "success" | null>(null)
   useEffect(() => {
     if (simulationVersion == null) return
-    if (irrPercent > 20) {
+    if (normalizedIrr > 0.2) {
       setModalType("success")
       setShowModal(true)
     } else {
@@ -39,47 +42,10 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
     }
   }, [simulationVersion]) 
 
-  function updateDomInputsForSelection(sel: ProductSelection) {
-    try {
-      const qtySelectors = [
-        `input[name="quantity-${sel.productId}-${sel.zoneId}"]`,
-        `input[data-product-id="${sel.productId}"][data-zone-id="${sel.zoneId}"][name="quantity"]`,
-        `input[data-product-id="${sel.productId}"][data-zone-id="${sel.zoneId}"][data-field="quantity"]`,
-      ]
-      const priceSelectors = [
-        `input[name="price-${sel.productId}-${sel.zoneId}"]`,
-        `input[data-product-id="${sel.productId}"][data-zone-id="${sel.zoneId}"][name="manualPrice"]`,
-        `input[data-product-id="${sel.productId}"][data-zone-id="${sel.zoneId}"][data-field="price"]`,
-      ]
-      for (const qs of qtySelectors) {
-        const el = document.querySelector<HTMLInputElement>(qs)
-        if (el) {
-          el.value = String(sel.quantity)
-          el.dispatchEvent(new Event("input", { bubbles: true }))
-          el.dispatchEvent(new Event("change", { bubbles: true }))
-          break
-        }
-      }
-      if (typeof sel.manualPrice === "number") {
-        for (const qs of priceSelectors) {
-          const el = document.querySelector<HTMLInputElement>(qs)
-          if (el) {
-            el.value = String(sel.manualPrice)
-            el.dispatchEvent(new Event("input", { bubbles: true }))
-            el.dispatchEvent(new Event("change", { bubbles: true }))
-            break
-          }
-        }
-      }
-    } catch {}
-  }
-
-  // aplicar sugerencia (individual o grupo/overrides)
   const applySuggestion = (suggIndex: number) => {
     const sugg = metrics.suggestions?.[suggIndex]
     if (!sugg) return
 
-    // si es sugerencia de grupo (overrides) aplicar todas
     if (sugg.overrides && sugg.overrides.length > 0) {
       const updatedGroup = localSelections.map((sel) => {
         const ov = sugg.overrides?.find((o) => o.productId === sel.productId)
@@ -91,12 +57,10 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
       setLocalSelections(updatedGroup)
       if (onApplySuggestion) onApplySuggestion(updatedGroup)
       try { window.dispatchEvent(new CustomEvent("cq:selectionsUpdated", { detail: updatedGroup })) } catch {}
-      updatedGroup.forEach((sel) => updateDomInputsForSelection(sel))
       setShowModal(false)
       return
     }
 
-    // individual
     const updated = localSelections.map((sel) => {
       if (sel.productId === sugg.productId && sel.zoneId === sugg.zoneId) {
         return sugg.type === "price"
@@ -108,7 +72,6 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
     setLocalSelections(updated)
     if (onApplySuggestion) onApplySuggestion(updated)
     try { window.dispatchEvent(new CustomEvent("cq:selectionsUpdated", { detail: updated })) } catch {}
-    updated.forEach((sel) => updateDomInputsForSelection(sel))
     setShowModal(false)
   }
 
@@ -116,6 +79,45 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
     const calcList = metrics.suggestions ? [...metrics.suggestions] : []
 
     if (calcList.length > 0) {
+      const hasGroup = calcList.some((s) => s.productId === "__group__")
+      if (!hasGroup && localSelections.length > 1) {
+        const priceCandidates = localSelections.filter((s) => typeof s.manualPrice === "number")
+        if (priceCandidates.length > 0) {
+          const overrides = priceCandidates.map((s) => ({
+            productId: s.productId,
+            zoneId: s.zoneId,
+            currentValue: s.manualPrice ?? 0,
+            suggestedValue: Math.round(((s.manualPrice ?? 1) * 1.1) * 100) / 100,
+          }))
+          calcList.unshift({
+            type: "price",
+            productId: "__group__",
+            zoneId: "",
+            currentValue: 0,
+            suggestedValue: 0,
+            estimatedIrr: metrics.irr,
+            detail: "Ajuste proporcional (grupo) +10% precios",
+            overrides,
+          } as any)
+        } else {
+          const overrides = localSelections.map((s) => ({
+            productId: s.productId,
+            zoneId: s.zoneId,
+            currentValue: s.quantity ?? 0,
+            suggestedValue: Math.max(1, Math.ceil((s.quantity ?? 1) * 1.1)),
+          }))
+          calcList.unshift({
+            type: "units",
+            productId: "__group__",
+            zoneId: "",
+            currentValue: 0,
+            suggestedValue: 0,
+            estimatedIrr: metrics.irr,
+            detail: `Ajuste proporcional unidades (grupo): ${overrides.map((g) => `${g.productId} +${Math.round(((g.suggestedValue / (g.currentValue || 1)) - 1) * 100)}%`).join(", ")}`,
+            overrides: overrides.map((o) => ({ productId: o.productId, zoneId: o.zoneId, currentValue: o.currentValue, suggestedValue: o.suggestedValue })),
+          } as any)
+        }
+      }
       calcList.sort((a, b) => {
         const aGroup = a.productId === "__group__" ? 0 : 1
         const bGroup = b.productId === "__group__" ? 0 : 1
@@ -125,7 +127,7 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
       return calcList
     }
 
-    const negativeSituation = (metrics.npv ?? 0) < 0 || (metrics.irr ?? 0) <= 20
+    const negativeSituation = (metrics.npv ?? 0) < 0 || normalizedIrr <= 0.2
     if (!negativeSituation) return []
 
     const fallbacks: any[] = []
@@ -150,7 +152,6 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
       })
     }
 
-    // Construir un ajuste combinado de unidades (proporcional simple: +10%)
     const groupQtyOverrides = localSelections
       .filter((s) => typeof s.quantity === "number" && s.quantity > 0)
       .map((s) => {
@@ -172,7 +173,6 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
       })
     }
 
-    // Limitar a máximo 2 sugerencias (priorizar price then units)
     return fallbacks.slice(0, 2)
   })()
 
@@ -189,7 +189,11 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <h3 className="text-lg font-semibold">{modalType === "warning" ? "Advertencia: TIR insuficiente" : "Aprobado: Inversión factible"}</h3>
-                <p className="mt-1 text-sm">{modalType === "warning" ? `La TIR es ${irrPercent.toFixed(2)}%. No se recomienda esta inversión.` : `La TIR es ${irrPercent.toFixed(2)}%.`}</p>
+                <p className="mt-1 text-sm">
+                  {modalType === "warning"
+                    ? `La TIR es ${(normalizedIrr * 100).toFixed(2)}%. No se recomienda esta inversión.`
+                    : `La TIR es ${(normalizedIrr * 100).toFixed(2)}%.`}
+                </p>
 
                 {sortedSuggestions && sortedSuggestions.length > 0 && (
                   <div className="mt-4">
@@ -223,7 +227,11 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
 
                           <div className="flex-shrink-0 flex flex-col items-end gap-2">
                             <div className="px-2 py-0.5 rounded-full bg-[#25ABB9]/12 text-[#025e63] text-sm font-medium">
-                              {(s.estimatedIrr * 100).toFixed(1)}%
+                              {(() => {
+                                const ev = typeof s.estimatedIrr === "number" ? s.estimatedIrr : 0
+                                const en = Math.abs(ev) > 1 ? ev / 100 : ev
+                                return (en * 100).toFixed(1)
+                              })()}%
                             </div>
                             <button
                               onClick={() => applySuggestion(i)}
@@ -266,7 +274,7 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
             <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{metrics.irr.toFixed(2)}%</div>
+            <div className="text-2xl font-bold">{(normalizedIrr * 100).toFixed(2)}%</div>
             <p className="text-xs text-muted-foreground mt-1">Rentabilidad anual</p>
           </CardContent>
         </Card>

@@ -40,12 +40,18 @@ export default function PrintPage() {
       const parsed = JSON.parse(raw)
       setItems(parsed.items || [])
       setYears(parsed.years || 0)
+      setMachines(parsed.machines || [])
+      setTotalMachinesInvestment(parsed.machinesInvestment || 0)
+      setTotalInvestment(parsed.totalInvestment || 0)
     } catch {
-      // ignore
     } finally {
       setLoaded(true)
     }
   }, [])
+
+  const [machines, setMachines] = useState<any[]>([])
+  const [totalMachinesInvestment, setTotalMachinesInvestment] = useState<number>(0)
+  const [totalInvestment, setTotalInvestment] = useState<number>(0)
 
   const resolvePrice = (sel: PrintItem) => {
     if (!sel.productId) return 0
@@ -62,9 +68,7 @@ export default function PrintPage() {
   const formatCurrency = (v?: number) =>
     v == null ? "-" : `$${Number(v).toLocaleString("es-ES", { maximumFractionDigits: 0 })}`
 
-  if (!loaded) return <div className="p-8 text-center text-gray-600">Cargando...</div>
-
-  if (loaded && items.length === 0) {
+  if (loaded && items.length === 0 && machines.length === 0) {
     return (
       <div className="p-8 max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Imprimir simulación</h1>
@@ -160,11 +164,42 @@ export default function PrintPage() {
                  )
                })}
              </tbody>
-           </table>
+            </table>
+          </div>
          </div>
-        </div>
  
-        {/* Pie de página */}
+        {/* Máquinas seleccionadas (mostrar unidad, cantidad y total por línea) */}
+        {machines && machines.length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-lg font-semibold mb-2">Máquinas seleccionadas</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-[#25ABB9] text-white">
+                    <th className="p-2 text-left">Máquina</th>
+                    <th className="p-2 text-right">Valor antes de IVA (unit.)</th>
+                    <th className="p-2 text-center">Cantidad</th>
+                    <th className="p-2 text-right">Total (unit. × qty)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {machines.map((m, idx) => {
+                    const lineTotal = (m.unitPriceBeforeIva || 0) * (m.quantity || 0)
+                    return (
+                      <tr key={idx} className={`${idx % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+                        <td className="p-2">{m.description}</td>
+                        <td className="p-2 text-right">{formatCurrency(m.unitPriceBeforeIva)}</td>
+                        <td className="p-2 text-center">{m.quantity}</td>
+                        <td className="p-2 text-right">{formatCurrency(lineTotal)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+           </div>
+         )}
+ 
         <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row sm:justify-between text-xs text-gray-500 border-t border-gray-300 pt-4 gap-2">
            <div>Fecha: {new Date().toLocaleString("es-ES", {
              year: "numeric",
