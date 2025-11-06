@@ -416,7 +416,7 @@ export default function CashFlowSimulator() {
                         </div>
 
                         <div>
-                          <Label className="text-sm font-semibold">Unidades</Label>
+                          <Label className="text-sm font-semibold">Unidades mes</Label>
                           <Input
                             type="number"
                             min={1}
@@ -526,7 +526,6 @@ export default function CashFlowSimulator() {
                       )
                     })}
 
-                    {/* Totales ocultos: no mostrar "Total inversión máquinas" */}
                    </div>
                  )}
                </div>
@@ -534,7 +533,7 @@ export default function CashFlowSimulator() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="space-y-3">
                   <Label htmlFor="investment" className="text-sm font-semibold text-gray-700">
-                    Inversión Inicial ($)
+                    Otras Inversiones ($)
                   </Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
