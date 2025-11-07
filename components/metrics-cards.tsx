@@ -18,6 +18,8 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
   }, [selections])
 
   const metrics = calculateMetrics(investment, localSelections, years)
+  const months = years // prop 'years' ahora contiene meses
+  const avgMonthlyNet = months > 0 ? Math.round((metrics.totalCashFlow || 0) / months) : 0
   const normalizedIrr = (() => {
     const v = metrics.irr ?? 0
     if (typeof v !== "number") return 0
@@ -178,6 +180,11 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
 
   return (
     <>
+      {/* Mostrar flujo promedio mensual para entender la TIR */}
+      <div className="mb-4">
+        <div className="text-sm text-gray-600">Flujo neto promedio mensual</div>
+        <div className="text-lg font-semibold">{avgMonthlyNet ? `$${avgMonthlyNet.toLocaleString("es-CO")}` : "-"}</div>
+      </div>
       {showModal && modalType && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowModal(false)} />
@@ -285,7 +292,7 @@ export function MetricsCards({ investment, years, selections, simulationVersion,
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{metrics.paybackPeriod} años</div>
+            <div className="text-2xl font-bold">{metrics.paybackPeriod} meses</div>
             <p className="text-xs text-muted-foreground mt-1">Tiempo de retorno</p>
           </CardContent>
         </Card>

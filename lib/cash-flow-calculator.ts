@@ -66,7 +66,7 @@ function getPriceForZone(product: Product, zoneId: string, manualPrice?: number)
 export function generateCashFlowData(
   investment: number,
   productSelections: ProductSelection[],
-  years: number,
+  months: number, // ahora en meses
 ): CashFlowData[] {
   const data: CashFlowData[] = []
   let cumulative = -investment
@@ -75,7 +75,7 @@ export function generateCashFlowData(
   if (!validSelections.length) {
     return [
       {
-        year: "Año 0",
+        year: "Mes 0",
         investment: investment,
         sales: 0,
         cost: 0,
@@ -88,7 +88,7 @@ export function generateCashFlowData(
   }
 
   data.push({
-    year: "Año 0",
+    year: "Mes 0",
     investment: investment,
     sales: 0,
     cost: 0,
@@ -106,8 +106,8 @@ export function generateCashFlowData(
       return {
         product,
         quantity: sel.quantity,
-        currentPrice: initialPrice, 
-        currentCost: product.baseCost2024, 
+        currentPrice: initialPrice,
+        currentCost: product.baseCost2024,
         annualIncrease: product.annualIncrease ?? 0.05,
       }
     })
@@ -119,7 +119,13 @@ export function generateCashFlowData(
       annualIncrease: number
     }[]
 
-  for (let year = 1, len = years; year <= len; year++) {
+  // Convertir incremento anual a factor mensual
+  states.forEach((s) => {
+    s.currentPrice = s.currentPrice
+    s.currentCost = s.currentCost
+  })
+
+  for (let m = 1; m <= months; m++) {
     let monthlyPriceSum = 0
     let monthlyCostSum = 0
 
@@ -131,15 +137,15 @@ export function generateCashFlowData(
       monthlyCostSum += cost * s.quantity
     })
 
-    const sales = monthlyPriceSum * 12
-    const cost = monthlyCostSum * 12
+    const sales = monthlyPriceSum // ya es mensual
+    const cost = monthlyCostSum
     const overhead = sales * 0.2
 
     const netCashFlow = sales - cost - overhead
     cumulative += netCashFlow
 
     data.push({
-      year: `Año ${year}`,
+      year: `Mes ${m}`,
       investment: 0,
       sales: Math.round(sales),
       cost: Math.round(cost),
@@ -149,9 +155,11 @@ export function generateCashFlowData(
       cumulativeCashFlow: Math.round(cumulative),
     })
 
+    // avanzar un mes: convertir aumento anual a factor mensual efectivo
     states.forEach((s) => {
-      s.currentPrice = s.currentPrice * (1 + s.annualIncrease)
-      s.currentCost = s.currentCost * (1 + s.annualIncrease)
+      const monthlyFactor = Math.pow(1 + s.annualIncrease, 1 / 12)
+      s.currentPrice = s.currentPrice * monthlyFactor
+      s.currentCost = s.currentCost * monthlyFactor
     })
   }
 
@@ -244,7 +252,7 @@ function computeIrrFromCashFlows(cashFlows: number[]): number {
 function suggestAdjustments(
   investment: number,
   productSelections: ProductSelection[],
-  years: number,
+  months: number,
 ): Suggestion[] {
   const suggestions: Suggestion[] = []
   const maxPriceFactor = 5 
@@ -255,16 +263,53 @@ function suggestAdjustments(
 
   const irrForOverrideAtIndex = (idx: number, override: Partial<ProductSelection>) => {
     const modified = productSelections.map((s, i) => (i === idx ? { ...s, ...override } : { ...s }))
-    const data = generateCashFlowData(investment, modified, years)
+    const data = generateCashFlowData(investment, modified, months)
     const cashFlows = [-investment, ...data.slice(1).map((d) => d.netCashFlow)]
-    return computeIrrFromCashFlows(cashFlows)
+
+    // Si months es múltiplo de 12, agrupar en años y calcular IRR anual directamente
+    if (months % 12 === 0) {
+      const yearsCount = Math.max(1, months / 12)
+      const annualCashFlows: number[] = [-investment]
+      for (let y = 0; y < yearsCount; y++) {
+        const start = 1 + y * 12
+        const end = start + 11
+        let sumYear = 0
+        for (let mi = start; mi <= end; mi++) {
+          sumYear += data[mi]?.netCashFlow ?? 0
+        }
+        annualCashFlows.push(Math.round(sumYear))
+      }
+      return computeIrrFromCashFlows(annualCashFlows)
+    }
+
+    // Si no, calcular IRR mensual y anualizar
+    const monthlyCashFlows = [-investment, ...data.slice(1).map((d) => d.netCashFlow)]
+    const irrMonthly = computeIrrFromCashFlows(monthlyCashFlows)
+    return isFinite(irrMonthly) ? Math.pow(1 + irrMonthly, 12) - 1 : NaN
   }
 
   const irrForOverrides = (overrides: Partial<ProductSelection>[]) => {
     const modified = productSelections.map((s, i) => ({ ...s, ...(overrides[i] ?? {}) }))
-    const data = generateCashFlowData(investment, modified, years)
-    const cashFlows = [-investment, ...data.slice(1).map((d) => d.netCashFlow)]
-    return computeIrrFromCashFlows(cashFlows)
+    const data = generateCashFlowData(investment, modified, months)
+
+    if (months % 12 === 0) {
+      const yearsCount = Math.max(1, months / 12)
+      const annualCashFlows: number[] = [-investment]
+      for (let y = 0; y < yearsCount; y++) {
+        const start = 1 + y * 12
+        const end = start + 11
+        let sumYear = 0
+        for (let mi = start; mi <= end; mi++) {
+          sumYear += data[mi]?.netCashFlow ?? 0
+        }
+        annualCashFlows.push(Math.round(sumYear))
+      }
+      return computeIrrFromCashFlows(annualCashFlows)
+    }
+
+    const monthlyCashFlows = [-investment, ...data.slice(1).map((d) => d.netCashFlow)]
+    const irrMonthly = computeIrrFromCashFlows(monthlyCashFlows)
+    return isFinite(irrMonthly) ? Math.pow(1 + irrMonthly, 12) - 1 : NaN
   }
 
   const individualSuggestions: Suggestion[] = []
@@ -582,26 +627,17 @@ function suggestAdjustments(
     if (groupPrice) final.push(groupPrice)
     if (groupUnits && final.length < maxSuggestions) final.push(groupUnits)
 
+    // Añadir sugerencias individuales hasta alcanzar maxSuggestions
     for (const ind of sortedIndividual) {
       if (final.length >= maxSuggestions) break
-      if (!final.find((f) => f.productId === ind.productId && f.type === ind.type)) final.push(ind)
+      final.push(ind)
     }
-
-    for (const g of sortedGroup) {
+  } else {
+    // Si hay <2 productos, priorizar sugerencias individuales
+    for (const ind of sortedIndividual) {
       if (final.length >= maxSuggestions) break
-      if (!final.includes(g)) final.push(g)
+      final.push(ind)
     }
-
-    return final.slice(0, maxSuggestions)
-  }
-
-  for (const g of sortedGroup) {
-    if (final.length >= maxSuggestions) break
-    final.push(g)
-  }
-  for (const ind of sortedIndividual) {
-    if (final.length >= maxSuggestions) break
-    final.push(ind)
   }
 
   return final.slice(0, maxSuggestions)
@@ -610,42 +646,77 @@ function suggestAdjustments(
 export function calculateMetrics(
   investment: number,
   productSelections: ProductSelection[],
-  years: number,
+  months: number,
 ): Metrics {
-  const data = generateCashFlowData(investment, productSelections, years)
-  const discountRate = 0.1
+  // flujos mensuales
+  const monthlyData = generateCashFlowData(investment, productSelections, months)
 
-  let npv = -investment
-  for (let i = 1; i < data.length; i++) {
-    npv += data[i].netCashFlow / Math.pow(1 + discountRate, i)
-  }
-
-  const cashFlows: number[] = [-investment, ...data.slice(1).map((d) => d.netCashFlow)]
-
-  const irrDecimal = computeIrrFromCashFlows(cashFlows)
-
-  const totalCashFlow = data[data.length - 1].cumulativeCashFlow
+  // total acumulado mensual final y ROI
+  const totalCashFlow = monthlyData[monthlyData.length - 1]?.cumulativeCashFlow ?? 0
   const roi = investment > 0 ? (totalCashFlow / investment) * 100 : 0
 
-  let paybackPeriod = 0
-  for (let i = 1; i < data.length; i++) {
-    if (data[i].cumulativeCashFlow >= 0) {
-      paybackPeriod = i
+  // payback en meses
+  let paybackPeriodMonths = 0
+  for (let i = 1; i < monthlyData.length; i++) {
+    if (monthlyData[i].cumulativeCashFlow >= 0) {
+      paybackPeriodMonths = i
       break
     }
   }
-  if (paybackPeriod === 0) paybackPeriod = years
+  if (paybackPeriodMonths === 0) paybackPeriodMonths = months
+
+  // Si months es múltiplo de 12: agrupar por años exactos y calcular IRR sobre años
+  let irrAnnualDecimal = NaN
+  let npv = -investment
+  if (months % 12 === 0) {
+    const yearsCount = Math.max(1, months / 12)
+    const annualCashFlows: number[] = [-investment]
+    for (let y = 0; y < yearsCount; y++) {
+      const startMonthIndex = 1 + y * 12
+      const endMonthIndex = startMonthIndex + 11
+      let sumYear = 0
+      for (let mi = startMonthIndex; mi <= endMonthIndex; mi++) {
+        sumYear += monthlyData[mi]?.netCashFlow ?? 0
+      }
+      annualCashFlows.push(Math.round(sumYear))
+    }
+
+    // VAN anual con tasa anual 10%
+    const annualDiscount = 0.1
+    npv = -investment
+    for (let i = 1; i < annualCashFlows.length; i++) {
+      npv += annualCashFlows[i] / Math.pow(1 + annualDiscount, i)
+    }
+
+    // IRR sobre flujos anuales
+    irrAnnualDecimal = computeIrrFromCashFlows(annualCashFlows)
+  } else {
+    // Si NO es múltiplo de 12: calcular IRR sobre flujos mensuales y anualizarlo
+    const monthlyCashFlows: number[] = [-investment, ...monthlyData.slice(1).map((d) => d.netCashFlow)]
+    const irrMonthly = computeIrrFromCashFlows(monthlyCashFlows)
+    irrAnnualDecimal = isFinite(irrMonthly) ? Math.pow(1 + irrMonthly, 12) - 1 : NaN
+
+    // NPV calculado con tasa anual convertida a mensual (para consistencia)
+    const annualDiscount = 0.1
+    const monthlyDiscount = Math.pow(1 + annualDiscount, 1 / 12) - 1
+    npv = -investment
+    for (let i = 1; i < monthlyCashFlows.length; i++) {
+      npv += monthlyCashFlows[i] / Math.pow(1 + monthlyDiscount, i)
+    }
+  }
+
+  const irrPercent = isFinite(irrAnnualDecimal) ? irrAnnualDecimal * 100 : NaN
 
   let suggestions: Suggestion[] | undefined = undefined
-  if (!(isFinite(irrDecimal) && irrDecimal > 0.2)) {
-    suggestions = suggestAdjustments(investment, productSelections, years)
+  if (!(isFinite(irrAnnualDecimal) && irrAnnualDecimal > 0.2)) {
+    suggestions = suggestAdjustments(investment, productSelections, months)
   }
 
   return {
     npv: Math.round(npv),
-    irr: irrDecimal * 100,
+    irr: irrPercent,
     roi,
-    paybackPeriod,
+    paybackPeriod: paybackPeriodMonths,
     totalCashFlow: Math.round(totalCashFlow),
     suggestions,
   }

@@ -159,7 +159,7 @@ export default function PrintPage() {
                     <td className="p-3 sm:p-4 text-gray-800 font-medium">{desc}</td>
                     <td className="p-3 sm:p-4 text-right text-gray-800 font-medium">{formatCurrency(price)}</td>
                     <td className="p-3 sm:p-4 text-center text-gray-800">{it.quantity}</td>
-                    <td className="p-3 sm:p-4 text-center text-gray-800">{years} {years === 1 ? "año" : "años"}</td>
+                    <td className="p-3 sm:p-4 text-center text-gray-800">{years} {years === 1 ? "mes" : "meses"}</td>
                    </tr>
                  )
                })}

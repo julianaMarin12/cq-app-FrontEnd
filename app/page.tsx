@@ -161,6 +161,8 @@ export default function CashFlowSimulator() {
 
       const totalInvestment = Number.parseFloat(investment || "0") + machinesInvestment
       const metrics = calculateMetrics(totalInvestment, items, Number.parseInt(years || "0"))
+      // DEBUG: imprimir métricas para entender por qué la TIR es alta
+      console.log("calculateMetrics result", { totalInvestment, years: Number.parseInt(years || "0"), metrics })
       let irrValue = metrics.irr
       if (typeof irrValue === "number" && Math.abs(irrValue) > 1) {
         irrValue = irrValue / 100
@@ -555,30 +557,25 @@ export default function CashFlowSimulator() {
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
                     <Input id="totalInvestment" type="text" value={formatInvestment(String(Math.round(totalInvestmentComputed)))} readOnly className="h-11 pl-8 border-gray-300 bg-gray-50" />
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Suma inversión inicial + precio máquinas × cantidad</p>
                 </div>
 
                 <div className="space-y-3">
                   <Label htmlFor="years" className="text-sm font-semibold text-gray-700">
-                    Años de Proyección
+                    Meses de Proyección
                   </Label>
                   <Select value={years} onValueChange={setYears}>
                     <SelectTrigger
                       id="years"
                       className="w-full h-11 border-gray-300 focus:border-[#25ABB9] focus:ring-[#25ABB9]"
                     >
-                      <SelectValue placeholder="Seleccionar años" className="truncate max-w-full" />
+                      <SelectValue placeholder="Seleccionar meses" className="truncate max-w-full" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="3" className="truncate max-w-full">
-                        3 años
-                      </SelectItem>
-                      <SelectItem value="4" className="truncate max-w-full">
-                        4 años
-                      </SelectItem>
-                      <SelectItem value="5" className="truncate max-w-full">
-                        5 años
-                      </SelectItem>
+                      {[24,30,36,42,48,54,60].map((m) => (
+                        <SelectItem key={m} value={String(m)} className="truncate max-w-full">
+                          {m} meses
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -633,7 +630,7 @@ export default function CashFlowSimulator() {
                   <div className="w-full">
                     <MetricsCards
                       investment={totalInvestmentComputed}
-                      years={Number.parseInt(years)}
+                      years={Number.parseInt(years)} // ahora representa meses
                       selections={items}
                       simulationVersion={simulationVersion}
                       onApplySuggestion={(updated) => {
