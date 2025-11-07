@@ -149,17 +149,18 @@ export default function CashFlowSimulator() {
   }
 
   const handleSimulate = () => {
-    const invOk = investment && Number.parseFloat(investment) > 0
+    // investment no es obligatorio: usar 0 si está vacío
+    const invValue = Number.parseFloat(investment || "0")
     const yearsOk = !!years
     const itemsOk = items.some((it) => it.productId && it.zoneId && it.quantity > 0)
-    if (invOk && yearsOk && itemsOk) {
+    if (yearsOk && itemsOk) {
       const machinesInvestment = machinesSelected.reduce((acc, m) => {
         const entry = machinesDatabase.find((x) => x.id === m.machineId)
         const unit = entry ? entry.priceBeforeIva : 0
         return acc + unit * (m.quantity || 0)
       }, 0)
 
-      const totalInvestment = Number.parseFloat(investment || "0") + machinesInvestment
+      const totalInvestment = invValue + machinesInvestment
       const metrics = calculateMetrics(totalInvestment, items, Number.parseInt(years || "0"))
       // DEBUG: imprimir métricas para entender por qué la TIR es alta
       console.log("calculateMetrics result", { totalInvestment, years: Number.parseInt(years || "0"), metrics })
@@ -609,10 +610,10 @@ export default function CashFlowSimulator() {
               <div className="flex gap-4 pt-4 border-t border-gray-200">
                 <Button
                   onClick={handleSimulate}
-                  disabled={!investment || !years || !items.some((it) => it.productId && it.zoneId && it.quantity > 0)}
+                  disabled={!years || !items.some((it) => it.productId && it.zoneId && it.quantity > 0)}
                   className="h-12 px-8 text-base font-semibold bg-[#25ABB9] hover:bg-[#1e8a95] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
-                  Simular 
+                   Simular 
                 </Button>
                 {showResults && (
                   <Button
