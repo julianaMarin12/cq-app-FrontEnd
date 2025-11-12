@@ -275,6 +275,39 @@
     "prices": { "zona1": 45045, "zona2": 48198 }
   },
   {
+    "id": "CAPSULA_DESCAFEINADO_X10",
+    "description": "CAPSULA DESCAFEINADO X 10 UNID",
+    "unit": "L.M",
+    "baseCost2024": 15172,
+    "annualIncrease": 0.05,
+    "categoria": "3 - CAPSULAS",
+    "linea": "147 - CAPSULAS",
+    "sublinea": "1147 - CAPSULAS",
+    "prices": { "zona1": 22462, "zona2": 24035 }
+  },
+  {
+    "id": "CAPSULA_DESCAFEINADO_X25",
+    "description": "CAPSULA DESCAFEINADO X 25 UNID",
+    "unit": "L.M",
+    "baseCost2024": 15172,
+    "annualIncrease": 0.05,
+    "categoria": "3 - CAPSULAS",
+    "linea": "147 - CAPSULAS",
+    "sublinea": "1147 - CAPSULAS",
+    "prices": { "zona1": 56153, "zona2": 60084 }
+  },
+  {
+    "id": "CAPSULA_DESCAFEINADO_X50",
+    "description": "CAPSULA DESCAFEINADO X 50 UNID",
+    "unit": "L.M",
+    "baseCost2024": 15172,
+    "annualIncrease": 0.05,
+    "categoria": "3 - CAPSULAS",
+    "linea": "147 - CAPSULAS",
+    "sublinea": "1147 - CAPSULAS",
+    "prices": { "zona1": 107106, "zona2": 114568 }
+  },
+  {
     "id": "AREQUIPE_CON_CAFE_KIT",
     "description": "AREQUIPE CON CAFE KIT",
     "unit": "L.M",

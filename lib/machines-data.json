@@ -9,7 +9,7 @@
   { "id": "cafetera_bunn_icb_dv_twin", "type": "AUTOMATICA", "description": "CAFETERA BUNN ICB-DV TWIN", "priceBeforeIva": 6953600 },
   { "id": "maquina_cafetera_bunn_vp17_2", "type": "AUTOMATICA", "description": "MÁQUINA CAFETERA BUNN VP 17 – 2", "priceBeforeIva": 2455001 },
   { "id": "maquina_capsulas_quindio_cn_d1110101", "type": "CAPSULAS", "description": "MÁQUINA DE CÁPSULAS CAFE QUINDIO CN-D1110101 (CON ESPUMADOR) MAIA", "priceBeforeIva": 4630835 },
-  { "id": "maquina_capsulas_cafe_quindio", "type": "CAPSULAS", "description": "MÁQUINA DE CÁPSULAS MARCA CAFÉ QUINDÍO", "priceBeforeIva": 414000 },
+  { "id": "maquina_capsulas_cafe_quindio", "type": "CAPSULAS", "description": "MÁQUINA DE CÁPSULAS MARCA CAFÉ QUINDÍO", "priceBeforeIva": 303285 },
   { "id": "maquina_espresso_d8_sed_auto", "type": "ESPRESSO", "description": "MÁQUINA ESPRESSO (D8 SED AUTO 2 SANREMO)", "priceBeforeIva": 17600000 },
   { "id": "maquina_san_remo_zoe_compact", "type": "ESPRESSO", "description": "MÁQUINA SAN REMO ZOE COMPACT SED 2 GRUPOS 220V Black/White", "priceBeforeIva": 16987308 },
   { "id": "maquina_san_remo_capri_1g", "type": "ESPRESSO", "description": "MAQUINA SAN REMO CAPRI SAP 1 GRUPO 220V", "priceBeforeIva": 12817696 },
