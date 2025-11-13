@@ -545,7 +545,7 @@ export default function CashFlowSimulator() {
                                   aria-label="Precio unitario por cápsula"
                                 />
                               </div>
-                              {unitsCount && <p className="text-xs text-gray-500 mt-1">{unitsCount} unidades detectadas</p>}
+                              {unitsCount && <p className="text-xs text-gray-500 mt-1">{unitsCount} unidades</p>}
                             </div>
                           </div>
                         )}
