@@ -130,7 +130,7 @@ export default function PrintPage() {
         {/* Encabezado responsive: columna en móvil, fila en sm+ */}
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 sm:mb-8 border-b border-gray-300 pb-4 sm:pb-6">
           <div className="flex items-center gap-4">
-            <img src="/logo.png" alt="Café Quindío" className="h-10 sm:h-12 w-auto object-contain" />
+            <img src="/Logo.png" alt="Café Quindío" className="h-10 sm:h-12 w-auto object-contain" />
             {/* título visible en sm+ al lado del logo */}
             <div className="hidden sm:block">
               <h1 className="text-lg sm:text-2xl font-bold text-gray-900 leading-tight">Resumen de la simulación</h1>
