@@ -148,6 +148,49 @@ export default function CashFlowSimulator() {
     return price && price > 0 ? price : undefined
   }
 
+  // Busca un precio "por defecto" dentro de las zonas del producto (primer precio > 0)
+  const getDefaultZonePrice = (productId?: string): number | undefined => {
+    if (!productId) return undefined
+    const product = productsDatabase.find((p) => p.id === productId)
+    if (!product || !product.prices) return undefined
+    const priceObj = product.prices as Record<string, number | undefined>
+    for (const key of Object.keys(priceObj)) {
+      const p = (priceObj as any)[key]
+      if (typeof p === "number" && p > 0) return p
+    }
+    return undefined
+  }
+
+  // Extrae la cantidad de unidades y si corresponde a cápsulas (ej: "30 cápsulas", "60 caps", "20 unidades", "x30", "30x")
+  const parseUnitsInfoFromDescription = (desc?: string): { count?: number; isCapsule?: boolean } => {
+    if (!desc) return {}
+    const unitWords = "(cápsulas|capsulas|caps|cápsula|capsula|uds|unidades|comprimidos|tabletas|comprimido|tableta)"
+    // 1) patrón típico: "30 cápsulas", "(30 caps)", "30 caps."
+    const re1 = new RegExp("(\\d+)\\s*" + unitWords + "\\b", "i")
+    const m1 = desc.match(re1)
+    if (m1 && m1[1]) {
+      const n = Number(m1[1])
+      const unitWord = (m1[2] || "").toLowerCase()
+      const isCapsule = /cápsulas|capsulas|caps|cápsula|capsula/i.test(unitWord)
+      return { count: Number.isFinite(n) && n > 0 ? n : undefined, isCapsule }
+    }
+    // 2) patrón "x30" o "x 30"
+    const re2 = /x\s*(\d+)\b/i
+    const m2 = desc.match(re2)
+    if (m2 && m2[1]) {
+      const n = Number(m2[1])
+      return { count: Number.isFinite(n) && n > 0 ? n : undefined, isCapsule: false }
+    }
+    // 3) patrón "30x" (número seguido de 'x')
+    const re3 = /(\d+)\s*x\b/i
+    const m3 = desc.match(re3)
+    if (m3 && m3[1]) {
+      const n = Number(m3[1])
+      return { count: Number.isFinite(n) && n > 0 ? n : undefined, isCapsule: false }
+    }
+    return {}
+  }
+
   const handleSimulate = () => {
     // investment no es obligatorio: usar 0 si está vacío
     const invValue = Number.parseFloat(investment || "0")
@@ -292,172 +335,220 @@ export default function CashFlowSimulator() {
                         ? getProductsByFilters(it.categoria, it.linea, it.sublinea)
                         : productsDatabase 
 
+                    const selectedProductEntry = it.productId ? productsDatabase.find((p) => p.id === it.productId) : undefined
+                    const unitsInfo = parseUnitsInfoFromDescription(selectedProductEntry?.description)
+                    const unitsCount = unitsInfo.count
+                    const isCapsule = !!unitsInfo.isCapsule
+                    const zonePriceSelected = it.zoneId && it.zoneId !== "otro" ? getZonePrice(it.productId, it.zoneId) : undefined
+                    const fallbackProductPrice = getDefaultZonePrice(it.productId)
+                    const effectivePrice =
+                      it.manualPrice != null ? it.manualPrice : zonePriceSelected ?? fallbackProductPrice
+                    const pricePerCapsule =
+                      typeof unitsCount === "number" && unitsCount > 0 && effectivePrice != null
+                        ? effectivePrice / unitsCount
+                        : undefined
+
                     return (
-                      <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-3 items-end">
-                        <div>
-                          <Label className="text-sm font-semibold">Categoría</Label>
-                          <Select
-                            value={it.categoria ?? ""}
-                            onValueChange={(v) =>
-                              updateItem(idx, {
-                                categoria: v === "__none" ? undefined : v,
-                                linea: undefined,
-                                sublinea: undefined,
-                                productId: "",
-                              })
-                            }
-                          >
-                            <SelectTrigger className="w-full h-11">
-                              <SelectValue placeholder="Categoría (opcional)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {getCategories().map((cat) => (
-                                <SelectItem key={cat} value={cat}>
-                                  {cat}
+                      <div key={idx}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-3 items-end">
+                          <div>
+                            <Label className="text-sm font-semibold">Categoría</Label>
+                            <Select
+                              value={it.categoria ?? ""}
+                              onValueChange={(v) =>
+                                updateItem(idx, {
+                                  categoria: v === "__none" ? undefined : v,
+                                  linea: undefined,
+                                  sublinea: undefined,
+                                  productId: "",
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-full h-11">
+                                <SelectValue placeholder="Categoría (opcional)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getCategories().map((cat) => (
+                                  <SelectItem key={cat} value={cat}>
+                                    {cat}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="__none">Ninguna</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-semibold">Línea</Label>
+                            <Select
+                              value={it.linea ?? ""}
+                              onValueChange={(v) =>
+                                updateItem(idx, { linea: v === "" ? undefined : v, sublinea: undefined, productId: "" })
+                              }
+                              disabled={!it.categoria}
+                            >
+                              <SelectTrigger className="w-full h-11">
+                                <SelectValue placeholder={it.categoria ? "Seleccionar línea" : "Selecciona categoría"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {itemLineas.map((lin) => (
+                                  <SelectItem key={lin} value={lin}>
+                                    {lin}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-semibold">Sublínea</Label>
+                            <Select
+                              value={it.sublinea ?? ""}
+                              onValueChange={(v) => updateItem(idx, { sublinea: v === "" ? undefined : v, productId: "" })}
+                              disabled={!it.linea}
+                            >
+                              <SelectTrigger className="w-full h-11">
+                                <SelectValue placeholder={it.linea ? "Seleccionar sublínea" : "Selecciona línea"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {itemSublineas.map((sub) => (
+                                  <SelectItem key={sub} value={sub}>
+                                    {sub}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-semibold">Producto</Label>
+                            <Select
+                              value={it.productId}
+                              onValueChange={(v) => {
+                                // Prioridad de precio al seleccionar producto:
+                                // 1) precio de la zona seleccionada (si existe y no es "otro")
+                                // 2) precio por defecto del producto (primer precio válido)
+                                // 3) conservar manualPrice previo
+                                const zonePrice = it.zoneId && it.zoneId !== "otro" ? getZonePrice(v, it.zoneId) : undefined
+                                const fallback = getDefaultZonePrice(v)
+                                updateItem(idx, {
+                                  productId: v,
+                                  manualPrice: zonePrice ?? fallback ?? it.manualPrice,
+                                })
+                              }}
+                              disabled={!availableProducts.length}
+                            >
+                              <SelectTrigger className="w-full h-11">
+                                <SelectValue placeholder="Seleccionar producto" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableProducts.map((product) => (
+                                  <SelectItem key={product.id} value={product.id}>
+                                    {product.description}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-semibold">Zona</Label>
+                            <Select
+                              value={it.zoneId}
+                              onValueChange={(v) => {
+                                const defaultPrice = v === "otro" ? undefined : getZonePrice(it.productId, v)
+                                updateItem(idx, {
+                                  zoneId: v,
+                                  manualPrice: v === "otro" ? undefined : defaultPrice !== undefined ? defaultPrice : it.manualPrice,
+                                })
+                              }}
+                              disabled={!it.productId}
+                            >
+                              <SelectTrigger className="w-full h-11">
+                                <SelectValue placeholder={it.productId ? "Seleccionar zona" : "Primero selecciona producto"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {zones.map((z) => (
+                                  <SelectItem key={z.id} value={z.id}>
+                                    {z.name}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem key="otro" value="otro">
+                                  Otro (introducir precio)
                                 </SelectItem>
-                              ))}
-                              <SelectItem value="__none">Ninguna</SelectItem>
-                            </SelectContent>
-                          </Select>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-semibold">Unidades mes</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={String(it.quantity)}
+                              onChange={(e) => updateItem(idx, { quantity: Math.max(1, Number(e.target.value || 1)) })}
+                              className="h-10 w-35"
+                            />
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-semibold">Precio</Label>
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1">
+                                <div className="relative w-full -ml-2">
+                                  <span className="absolute left-1 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                                  <Input
+                                    type="text"
+                                    placeholder="Ingresa precio"
+                                    value={it.manualPrice !== undefined ? formatCurrencyForInput(it.manualPrice) : ""}
+                                    onChange={(e) => {
+                                      const parsed = parseCurrencyInput(e.target.value)
+                                      updateItem(idx, { manualPrice: parsed })
+                                    }}
+                                    className="h-11 pl-8 w-full"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => removeItem(idx)}
+                                  className="h-11 w-11 p-0 flex items-center justify-center"
+                                  title="Quitar"
+                                >
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
-                        <div>
-                          <Label className="text-sm font-semibold">Línea</Label>
-                          <Select
-                            value={it.linea ?? ""}
-                            onValueChange={(v) =>
-                              updateItem(idx, { linea: v === "" ? undefined : v, sublinea: undefined, productId: "" })
-                            }
-                            disabled={!it.categoria}
-                          >
-                            <SelectTrigger className="w-full h-11">
-                              <SelectValue placeholder={it.categoria ? "Seleccionar línea" : "Selecciona categoría"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {itemLineas.map((lin) => (
-                                <SelectItem key={lin} value={lin}>
-                                  {lin}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label className="text-sm font-semibold">Sublínea</Label>
-                          <Select
-                            value={it.sublinea ?? ""}
-                            onValueChange={(v) => updateItem(idx, { sublinea: v === "" ? undefined : v, productId: "" })}
-                            disabled={!it.linea}
-                          >
-                            <SelectTrigger className="w-full h-11">
-                              <SelectValue placeholder={it.linea ? "Seleccionar sublínea" : "Selecciona línea"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {itemSublineas.map((sub) => (
-                                <SelectItem key={sub} value={sub}>
-                                  {sub}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label className="text-sm font-semibold">Producto</Label>
-                          <Select
-                            value={it.productId}
-                            onValueChange={(v) => {
-                              const defaultPrice = it.zoneId === "otro" ? undefined : getZonePrice(v, it.zoneId)
-                              updateItem(idx, {
-                                productId: v,
-                                manualPrice: defaultPrice !== undefined ? defaultPrice : it.manualPrice,
-                              })
-                            }}
-                            disabled={!availableProducts.length}
-                          >
-                            <SelectTrigger className="w-full h-11">
-                              <SelectValue placeholder="Seleccionar producto" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableProducts.map((product) => (
-                                <SelectItem key={product.id} value={product.id}>
-                                  {product.description}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label className="text-sm font-semibold">Zona</Label>
-                          <Select
-                            value={it.zoneId}
-                            onValueChange={(v) => {
-                              const defaultPrice = v === "otro" ? undefined : getZonePrice(it.productId, v)
-                              updateItem(idx, {
-                                zoneId: v,
-                                manualPrice: v === "otro" ? undefined : defaultPrice !== undefined ? defaultPrice : it.manualPrice,
-                              })
-                            }}
-                            disabled={!it.productId}
-                          >
-                            <SelectTrigger className="w-full h-11">
-                              <SelectValue placeholder={it.productId ? "Seleccionar zona" : "Primero selecciona producto"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {zones.map((z) => (
-                                <SelectItem key={z.id} value={z.id}>
-                                  {z.name}
-                                </SelectItem>
-                              ))}
-                              <SelectItem key="otro" value="otro">
-                                Otro (introducir precio)
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label className="text-sm font-semibold">Unidades mes</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            value={String(it.quantity)}
-                            onChange={(e) => updateItem(idx, { quantity: Math.max(1, Number(e.target.value || 1)) })}
-                            className="h-10 w-35"
-                          />
-                        </div>
-
-                        <div>
-                          <Label className="text-sm font-semibold">Precio </Label>
-                          <div className="flex items-center gap-2">
-                            <div className="relative w-50 sm:flex-3 -ml-2">
-                               <span className="absolute left-1 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
-                               <Input
-                                 type="text"
-                                 placeholder="Ingresa precio"
-                                 value={it.manualPrice !== undefined ? formatCurrencyForInput(it.manualPrice) : ""}
-                                 onChange={(e) => {
-                                   const parsed = parseCurrencyInput(e.target.value)
-                                   updateItem(idx, { manualPrice: parsed })
-                                 }}
-                                 /* ahora siempre editable para permitir override manual */
-                                 className="h-11 pl-8 w-full"
-                               />
-                             </div>
-
-                             <Button
-                               size="sm"
-                               variant="destructive"
-                               onClick={() => removeItem(idx)}
-                               className="h-11 w-11 p-0 flex items-center justify-center"
-                               title="Quitar"
-                             >
-                               <Trash className="h-4 w-4" />
-                             </Button>
-                           </div>
-                         </div>
+                        {unitsCount && (
+                          <div className="mt-2 grid grid-cols-1 md:grid-cols-7 gap-3">
+                            <div className="md:col-span-7">
+                              <Label className="text-xs font-semibold">
+                                {isCapsule ? "Precio unitario (por cápsula)" : "Precio por unidad "}
+                              </Label>
+                              <div className="relative w-36 -ml-2">
+                                <span className="absolute left-1 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                                <Input
+                                  type="text"
+                                  readOnly
+                                  value={
+                                    pricePerCapsule != null
+                                      ? `$${Number(pricePerCapsule).toLocaleString("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : "-"
+                                  }
+                                  className="h-9 pl-8 w-full text-sm"
+                                  aria-label="Precio unitario por cápsula"
+                                />
+                              </div>
+                              {unitsCount && <p className="text-xs text-gray-500 mt-1">{unitsCount} unidades detectadas</p>}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}

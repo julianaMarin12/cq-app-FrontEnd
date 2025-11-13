@@ -67,6 +67,35 @@ export default function PrintPage() {
 
   const formatCurrency = (v?: number) =>
     v == null ? "-" : `$${Number(v).toLocaleString("es-ES", { maximumFractionDigits: 0 })}`
+  // Extrae unidades e indica si la descripción refiere a cápsulas
+  const parseUnitsInfoFromDescription = (desc?: string): { count?: number; isCapsule?: boolean } => {
+    if (!desc) return {}
+    const unitWords = "(cápsulas|capsulas|caps|cápsula|capsula|uds|unidades|comprimidos|tabletas|comprimido|tableta)"
+    const re1 = new RegExp("(\\d+)\\s*" + unitWords + "\\b", "i")
+    const m1 = desc.match(re1)
+    if (m1 && m1[1]) {
+      const n = Number(m1[1])
+      const unitWord = (m1[2] || "").toLowerCase()
+      const isCapsule = /cápsulas|capsulas|caps|cápsula|capsula/i.test(unitWord)
+      return { count: Number.isFinite(n) && n > 0 ? n : undefined, isCapsule }
+    }
+    const re2 = /x\s*(\d+)\b/i
+    const m2 = desc.match(re2)
+    if (m2 && m2[1]) {
+      const n = Number(m2[1])
+      return { count: Number.isFinite(n) && n > 0 ? n : undefined, isCapsule: false }
+    }
+    const re3 = /(\d+)\s*x\b/i
+    const m3 = desc.match(re3)
+    if (m3 && m3[1]) {
+      const n = Number(m3[1])
+      return { count: Number.isFinite(n) && n > 0 ? n : undefined, isCapsule: false }
+    }
+    return {}
+  }
+
+  const formatCurrencyDecimals = (v?: number) =>
+    v == null ? "-" : `$${Number(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
   if (loaded && items.length === 0 && machines.length === 0) {
     return (
@@ -142,6 +171,7 @@ export default function PrintPage() {
                <tr className="bg-[#25ABB9] text-white">
                 <th className="p-3 sm:p-4 text-left font-semibold border-b border-gray-400">Producto</th>
                 <th className="p-3 sm:p-4 text-right font-semibold border-b border-gray-400">Precio unitario</th>
+                <th className="p-3 sm:p-4 text-right font-semibold border-b border-gray-400">Precio / cápsula</th>
                 <th className="p-3 sm:p-4 text-center font-semibold border-b border-gray-400">Pedido mínimo</th>
                 <th className="p-3 sm:p-4 text-center font-semibold border-b border-gray-400">Duración</th>
                </tr>
@@ -151,6 +181,12 @@ export default function PrintPage() {
                  const product = productsDatabase.find((p) => p.id === it.productId)
                  const desc = product ? product.description : it.productId
                  const price = resolvePrice(it)
+                 // detectar unidades y cápsulas a partir de la descripción del producto
+                 const unitsInfo = parseUnitsInfoFromDescription(product?.description)
+                 const unitsCount = unitsInfo.count
+                 const isCapsule = !!unitsInfo.isCapsule
+                 const pricePerCapsule = typeof unitsCount === "number" && unitsCount > 0 ? price / unitsCount : undefined
+                 const lineTotal = price * (it.quantity || 0)
                  return (
                    <tr
                      key={idx}
@@ -158,6 +194,13 @@ export default function PrintPage() {
                    >
                     <td className="p-3 sm:p-4 text-gray-800 font-medium">{desc}</td>
                     <td className="p-3 sm:p-4 text-right text-gray-800 font-medium">{formatCurrency(price)}</td>
+                    <td className="p-3 sm:p-4 text-right text-gray-800 font-medium">
+                      {pricePerCapsule != null ? formatCurrencyDecimals(pricePerCapsule) : "-"}
+                      {unitsCount && (
+                        <div className="text-xs text-gray-500 mt-1">
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3 sm:p-4 text-center text-gray-800">{it.quantity}</td>
                     <td className="p-3 sm:p-4 text-center text-gray-800">{years} {years === 1 ? "mes" : "meses"}</td>
                    </tr>
