@@ -228,8 +228,93 @@ export default function CashFlowSimulator() {
     setShowResults(false)
     setLastIrr(null)
     setSimulationVersion(0)
+    try {
+      sessionStorage.removeItem("cq_simulation_state")
+      sessionStorage.removeItem("cq_print_payload")
+    } catch {
+      // ignore
+    }
   }
 
+  // --- RESTAURAR ESTADO GUARDADO AL MONTAR ---
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("cq_simulation_state")
+      if (!raw) return
+      const s = JSON.parse(raw)
+      setCategoria(s.categoria ?? "")
+      setLinea(s.linea ?? "")
+      setSublinea(s.sublinea ?? "")
+      setInvestment(s.investment ?? "")
+      setYears(s.years ?? "")
+      setItems((s.items && s.items.length) ? s.items : [{ productId: "", zoneId: "", quantity: 1 }])
+      setMachinesSelected(s.machinesSelected ?? [])
+      setMachinePicker(s.machinePicker ?? "")
+      setShowResults(!!s.showResults)
+      setLastIrr(typeof s.lastIrr === "number" ? s.lastIrr : null)
+      setSimulationVersion(s.simulationVersion ?? 0)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // --- GUARDAR ESTADO AUTOMÁTICAMENTE EN sessionStorage ---
+  useEffect(() => {
+    try {
+      const state = {
+        categoria,
+        linea,
+        sublinea,
+        investment,
+        years,
+        items,
+        machinesSelected,
+        machinePicker,
+        showResults,
+        lastIrr,
+        simulationVersion,
+      }
+      sessionStorage.setItem("cq_simulation_state", JSON.stringify(state))
+    } catch {
+      // ignore
+    }
+  }, [categoria, linea, sublinea, investment, years, items, machinesSelected, machinePicker, showResults, lastIrr, simulationVersion])
+
+  // --- GUARDAR ESTADO EN SALIDA / VISIBILITY CHANGE ---
+  useEffect(() => {
+    const saveState = () => {
+      try {
+        const state = {
+          categoria,
+          linea,
+          sublinea,
+          investment,
+          years,
+          items,
+          machinesSelected,
+          machinePicker,
+          showResults,
+          lastIrr,
+          simulationVersion,
+        }
+        sessionStorage.setItem("cq_simulation_state", JSON.stringify(state))
+      } catch {
+        // ignore
+      }
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") saveState()
+    }
+
+    window.addEventListener("beforeunload", saveState)
+    document.addEventListener("visibilitychange", onVisibility)
+
+    return () => {
+      window.removeEventListener("beforeunload", saveState)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [categoria, linea, sublinea, investment, years, items, machinesSelected, machinePicker, showResults, lastIrr, simulationVersion])
 
   const goToPrint = async () => {
     const machinesPayload = machinesSelected.map((m) => {
@@ -252,8 +337,24 @@ export default function CashFlowSimulator() {
     }
 
     try {
+      // Guardar tanto la payload de impresión como el estado completo de la simulación
       sessionStorage.setItem("cq_print_payload", JSON.stringify(payload))
+      const simState = {
+        categoria,
+        linea,
+        sublinea,
+        investment,
+        years,
+        items,
+        machinesSelected,
+        machinePicker,
+        showResults,
+        lastIrr,
+        simulationVersion,
+      }
+      sessionStorage.setItem("cq_simulation_state", JSON.stringify(simState))
     } catch {
+      // ignore
     }
 
     try {

@@ -43,6 +43,27 @@ export default function PrintPage() {
       setMachines(parsed.machines || [])
       setTotalMachinesInvestment(parsed.machinesInvestment || 0)
       setTotalInvestment(parsed.totalInvestment || 0)
+
+      // Escribir también un estado de simulación para que al volver se restaure la UI
+      try {
+        const simState = {
+          categoria: "",
+          linea: "",
+          sublinea: "",
+          // Estimamos "investment" como total - máquinas (si está disponible)
+          investment: String((parsed.totalInvestment || 0) - (parsed.machinesInvestment || 0)),
+          years: String(parsed.years || ""),
+          items: parsed.items || [],
+          machinesSelected: (parsed.machines || []).map((m: any) => ({ machineId: m.machineId, quantity: m.quantity || 1 })),
+          machinePicker: "",
+          showResults: true,
+          lastIrr: null,
+          simulationVersion: 1,
+        }
+        sessionStorage.setItem("cq_simulation_state", JSON.stringify(simState))
+      } catch {
+        // ignore
+      }
     } catch {
     } finally {
       setLoaded(true)
@@ -97,12 +118,41 @@ export default function PrintPage() {
   const formatCurrencyDecimals = (v?: number) =>
     v == null ? "-" : `$${Number(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+  // Nuevo handler para volver: asegura que el estado de simulación está guardado y recarga la página principal
+  const handleBack = () => {
+    try {
+      const simState = {
+        categoria: "",
+        linea: "",
+        sublinea: "",
+        investment: String((totalInvestment || 0) - (totalMachinesInvestment || 0)),
+        years: String(years || ""),
+        items,
+        machinesSelected: machines.map((m) => ({ machineId: m.machineId, quantity: m.quantity || 1 })),
+        machinePicker: "",
+        showResults: true,
+        lastIrr: null,
+        simulationVersion: 1,
+      }
+      sessionStorage.setItem("cq_simulation_state", JSON.stringify(simState))
+    } catch {
+      // ignore
+    }
+    // FORZAR recarga completa para que la página principal monte y restaure desde sessionStorage
+    try {
+      window.location.href = "/"
+    } catch {
+      // fallback a router si por algún motivo no está disponible
+      try { router.push("/") } catch {}
+    }
+  }
+
   if (loaded && items.length === 0 && machines.length === 0) {
     return (
       <div className="p-8 max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Imprimir simulación</h1>
         <p className="text-gray-600 mb-6">No hay datos de simulación para imprimir.</p>
-        <Button variant="outline" onClick={() => router.back()}>
+        <Button variant="outline" onClick={handleBack}>
           <ArrowLeft className="w-4 h-4 mr-2" />Volver
         </Button>
       </div>
@@ -147,7 +197,7 @@ export default function PrintPage() {
           <div className="flex gap-2 sm:gap-3 items-center text-sm">
             <Button
               variant="outline"
-              onClick={() => router.back()}
+              onClick={handleBack}
               className="border-gray-400 text-gray-700 hover:bg-gray-50 no-print text-xs sm:text-sm"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
