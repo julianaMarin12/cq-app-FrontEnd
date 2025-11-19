@@ -25,6 +25,25 @@ import machinesJson from "@/lib/machines-data.json"
 interface MachineEntry { id: string; type: string; description: string; priceBeforeIva: number }
 const machinesDatabase = machinesJson as MachineEntry[]
 
+interface SavedQuote {
+  id: string
+  name: string
+  createdAt: number
+  payload: {
+    categoria: string
+    linea: string
+    sublinea: string
+    investment: string
+    years: string
+    items: ProductSelection[]
+    machinesSelected: { machineId: string; quantity: number }[]
+    machinePicker: string
+    showResults: boolean
+    lastIrr: number | null
+    simulationVersion: number
+  }
+}
+
 export default function CashFlowSimulator() {
 	const router = useRouter()
 
@@ -44,6 +63,10 @@ export default function CashFlowSimulator() {
 
   const [machinesSelected, setMachinesSelected] = useState<{ machineId: string; quantity: number }[]>([])
   const [machinePicker, setMachinePicker] = useState<string>("")
+
+  const [savedQuotes, setSavedQuotes] = useState<SavedQuote[]>([])
+  const [quoteName, setQuoteName] = useState<string>("")
+  const [loadedQuoteId, setLoadedQuoteId] = useState<string | null>(null)
 
   const categorias = useMemo(() => getCategories(), [])
   const lineas = useMemo(() => (categoria ? getLineasByCategoria(categoria) : []), [categoria])
@@ -148,7 +171,6 @@ export default function CashFlowSimulator() {
     return price && price > 0 ? price : undefined
   }
 
-  // Busca un precio "por defecto" dentro de las zonas del producto (primer precio > 0)
   const getDefaultZonePrice = (productId?: string): number | undefined => {
     if (!productId) return undefined
     const product = productsDatabase.find((p) => p.id === productId)
@@ -161,11 +183,9 @@ export default function CashFlowSimulator() {
     return undefined
   }
 
-  // Extrae la cantidad de unidades y si corresponde a cápsulas (ej: "30 cápsulas", "60 caps", "20 unidades", "x30", "30x")
   const parseUnitsInfoFromDescription = (desc?: string): { count?: number; isCapsule?: boolean } => {
     if (!desc) return {}
     const unitWords = "(cápsulas|capsulas|caps|cápsula|capsula|uds|unidades|comprimidos|tabletas|comprimido|tableta)"
-    // 1) patrón típico: "30 cápsulas", "(30 caps)", "30 caps."
     const re1 = new RegExp("(\\d+)\\s*" + unitWords + "\\b", "i")
     const m1 = desc.match(re1)
     if (m1 && m1[1]) {
@@ -174,14 +194,12 @@ export default function CashFlowSimulator() {
       const isCapsule = /cápsulas|capsulas|caps|cápsula|capsula/i.test(unitWord)
       return { count: Number.isFinite(n) && n > 0 ? n : undefined, isCapsule }
     }
-    // 2) patrón "x30" o "x 30"
     const re2 = /x\s*(\d+)\b/i
     const m2 = desc.match(re2)
     if (m2 && m2[1]) {
       const n = Number(m2[1])
       return { count: Number.isFinite(n) && n > 0 ? n : undefined, isCapsule: false }
     }
-    // 3) patrón "30x" (número seguido de 'x')
     const re3 = /(\d+)\s*x\b/i
     const m3 = desc.match(re3)
     if (m3 && m3[1]) {
@@ -192,7 +210,6 @@ export default function CashFlowSimulator() {
   }
 
   const handleSimulate = () => {
-    // investment no es obligatorio: usar 0 si está vacío
     const invValue = Number.parseFloat(investment || "0")
     const yearsOk = !!years
     const itemsOk = items.some((it) => it.productId && it.zoneId && it.quantity > 0)
@@ -205,7 +222,6 @@ export default function CashFlowSimulator() {
 
       const totalInvestment = invValue + machinesInvestment
       const metrics = calculateMetrics(totalInvestment, items, Number.parseInt(years || "0"))
-      // DEBUG: imprimir métricas para entender por qué la TIR es alta
       console.log("calculateMetrics result", { totalInvestment, years: Number.parseInt(years || "0"), metrics })
       let irrValue = metrics.irr
       if (typeof irrValue === "number" && Math.abs(irrValue) > 1) {
@@ -232,11 +248,9 @@ export default function CashFlowSimulator() {
       sessionStorage.removeItem("cq_simulation_state")
       sessionStorage.removeItem("cq_print_payload")
     } catch {
-      // ignore
     }
   }
 
-  // --- RESTAURAR ESTADO GUARDADO AL MONTAR ---
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("cq_simulation_state")
@@ -254,11 +268,9 @@ export default function CashFlowSimulator() {
       setLastIrr(typeof s.lastIrr === "number" ? s.lastIrr : null)
       setSimulationVersion(s.simulationVersion ?? 0)
     } catch {
-      // ignore
     }
   }, [])
 
-  // --- GUARDAR ESTADO AUTOMÁTICAMENTE EN sessionStorage ---
   useEffect(() => {
     try {
       const state = {
@@ -275,12 +287,13 @@ export default function CashFlowSimulator() {
         simulationVersion,
       }
       sessionStorage.setItem("cq_simulation_state", JSON.stringify(state))
+      if (loadedQuoteId) {
+        updateExistingQuote(loadedQuoteId)
+      }
     } catch {
-      // ignore
     }
-  }, [categoria, linea, sublinea, investment, years, items, machinesSelected, machinePicker, showResults, lastIrr, simulationVersion])
+  }, [categoria, linea, sublinea, investment, years, items, machinesSelected, machinePicker, showResults, lastIrr, simulationVersion, loadedQuoteId])
 
-  // --- GUARDAR ESTADO EN SALIDA / VISIBILITY CHANGE ---
   useEffect(() => {
     const saveState = () => {
       try {
@@ -299,7 +312,6 @@ export default function CashFlowSimulator() {
         }
         sessionStorage.setItem("cq_simulation_state", JSON.stringify(state))
       } catch {
-        // ignore
       }
     }
 
@@ -317,6 +329,7 @@ export default function CashFlowSimulator() {
   }, [categoria, linea, sublinea, investment, years, items, machinesSelected, machinePicker, showResults, lastIrr, simulationVersion])
 
   const goToPrint = async () => {
+    const createdOrUpdated = saveOrCreateQuote()
     const machinesPayload = machinesSelected.map((m) => {
       const entry = machinesDatabase.find((x) => x.id === m.machineId)
       return {
@@ -334,10 +347,10 @@ export default function CashFlowSimulator() {
       machines: machinesPayload,
       machinesInvestment,
       totalInvestment: Number.parseInt(investment || "0") + machinesInvestment,
+      quoteId: createdOrUpdated?.id ?? loadedQuoteId,
     }
 
     try {
-      // Guardar tanto la payload de impresión como el estado completo de la simulación
       sessionStorage.setItem("cq_print_payload", JSON.stringify(payload))
       const simState = {
         categoria,
@@ -354,7 +367,6 @@ export default function CashFlowSimulator() {
       }
       sessionStorage.setItem("cq_simulation_state", JSON.stringify(simState))
     } catch {
-      // ignore
     }
 
     try {
@@ -364,6 +376,123 @@ export default function CashFlowSimulator() {
         window.location.href = "/print"
       } catch {
       }
+    }
+  }
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cq_saved_quotes")
+      if (raw) {
+        const parsed = JSON.parse(raw) as SavedQuote[]
+        setSavedQuotes(parsed)
+      }
+    } catch {
+    }
+  }, [])
+
+  const persistSavedQuotes = (arr: SavedQuote[]) => {
+    try {
+      localStorage.setItem("cq_saved_quotes", JSON.stringify(arr))
+      setSavedQuotes(arr)
+    } catch {
+    }
+  }
+
+  const buildCurrentPayload = () => ({
+    categoria,
+    linea,
+    sublinea,
+    investment,
+    years,
+    items,
+    machinesSelected,
+    machinePicker,
+    showResults,
+    lastIrr,
+    simulationVersion,
+  })
+
+  const updateExistingQuote = (id: string) => {
+    try {
+      const raw = localStorage.getItem("cq_saved_quotes")
+      const arr = raw ? (JSON.parse(raw) as SavedQuote[]) : []
+      const idx = arr.findIndex((q) => q.id === id)
+      const payload = buildCurrentPayload()
+      if (idx >= 0) {
+        arr[idx] = { ...arr[idx], name: quoteName || arr[idx].name, payload }
+        localStorage.setItem("cq_saved_quotes", JSON.stringify(arr))
+        setSavedQuotes(arr)
+      }
+    } catch {
+      
+    }
+  }
+
+  const saveOrCreateQuote = (opts?: { nameOverride?: string }) => {
+    try {
+      const raw = localStorage.getItem("cq_saved_quotes")
+      const arr = raw ? (JSON.parse(raw) as SavedQuote[]) : []
+      const id = loadedQuoteId ?? `q_${Date.now()}`
+      const name = opts?.nameOverride ?? (quoteName || (loadedQuoteId ? (arr.find((q) => q.id === loadedQuoteId)?.name ?? `Cotización`) : `Cotización ${arr.length + 1}`))
+      const quote: SavedQuote = {
+        id,
+        name,
+        createdAt: Date.now(),
+        payload: buildCurrentPayload(),
+      }
+      let updated: SavedQuote[]
+      if (loadedQuoteId) {
+        updated = arr.map((q) => (q.id === id ? quote : q))
+      } else {
+        updated = [...arr, quote]
+      }
+      localStorage.setItem("cq_saved_quotes", JSON.stringify(updated))
+      setSavedQuotes(updated)
+      setLoadedQuoteId(id)
+      setQuoteName(name)
+      return quote
+    } catch {
+      return null
+    }
+  }
+
+  const loadQuoteById = (id: string) => {
+    try {
+      const raw = localStorage.getItem("cq_saved_quotes")
+      if (!raw) return
+      const arr = JSON.parse(raw) as SavedQuote[]
+      const q = arr.find((x) => x.id === id)
+      if (!q) return
+      const p = q.payload
+      setCategoria(p.categoria ?? "")
+      setLinea(p.linea ?? "")
+      setSublinea(p.sublinea ?? "")
+      setInvestment(p.investment ?? "")
+      setYears(p.years ?? "")
+      setItems(p.items && p.items.length ? p.items : [{ productId: "", zoneId: "", quantity: 1 }])
+      setMachinesSelected(p.machinesSelected ?? [])
+      setMachinePicker(p.machinePicker ?? "")
+      setShowResults(!!p.showResults)
+      setLastIrr(typeof p.lastIrr === "number" ? p.lastIrr : null)
+      setSimulationVersion(p.simulationVersion ?? 0)
+      setLoadedQuoteId(q.id)
+      setQuoteName(q.name)
+    } catch {
+    }
+  }
+
+  const deleteQuoteById = (id: string) => {
+    try {
+      const raw = localStorage.getItem("cq_saved_quotes")
+      const arr = raw ? (JSON.parse(raw) as SavedQuote[]) : []
+      const filtered = arr.filter((q) => q.id !== id)
+      localStorage.setItem("cq_saved_quotes", JSON.stringify(filtered))
+      setSavedQuotes(filtered)
+      if (loadedQuoteId === id) {
+        setLoadedQuoteId(null)
+        setQuoteName("")
+      }
+    } catch {
     }
   }
 
@@ -398,6 +527,103 @@ export default function CashFlowSimulator() {
       >
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
           <div className="mb-8">
+
+            {/* --- NUEVA SECCION: Cotizaciones guardadas --- */}
+            <div className="mb-6 border rounded p-3 bg-white">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold text-[#25ABB9]">Cotizaciones guardadas</h4>
+                <div className="text-xs text-gray-500">{loadedQuoteId ? `Activa: ${loadedQuoteId}` : "No hay cotización activa"}</div>
+              </div>
+
+              <div className="flex gap-2 items-center">
+                <select
+                  value={loadedQuoteId ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (!v) return
+                    loadQuoteById(v)
+                  }}
+                  className="border rounded p-2 flex-1"
+                >
+                  <option value="">-- Seleccionar cotización --</option>
+                  {savedQuotes.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.name} — {new Date(q.createdAt).toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="px-3 py-2 bg-gray-100 rounded border"
+                  onClick={() => {
+                    const newId = `q_${Date.now()}`
+                    const emptyPayload = {
+                      categoria: "",
+                      linea: "",
+                      sublinea: "",
+                      investment: "",
+                      years: "",
+                      items: [{ productId: "", zoneId: "", quantity: 1 }],
+                      machinesSelected: [],
+                      machinePicker: "",
+                      showResults: false,
+                      lastIrr: null,
+                      simulationVersion: 0,
+                    }
+                    const newQuote: SavedQuote = {
+                      id: newId,
+                      name: `Cotización ${savedQuotes.length + 1}`,
+                      createdAt: Date.now(),
+                      payload: emptyPayload,
+                    }
+                    const updated = [...savedQuotes, newQuote]
+                    persistSavedQuotes(updated)
+                    handleReset()
+                    setLoadedQuoteId(newId)
+                    setQuoteName(newQuote.name)
+                  }}
+                >
+                  Nueva
+                </button>
+
+                <button
+                  className="px-3 py-2 bg-red-100 text-red-700 rounded border"
+                  onClick={() => {
+                    if (!loadedQuoteId) return
+                    deleteQuoteById(loadedQuoteId)
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+
+              <div className="mt-2 flex gap-2 items-center">
+                <input
+                  placeholder="Nombre de cotización"
+                  value={quoteName}
+                  onChange={(e) => setQuoteName(e.target.value)}
+                  className="border rounded p-2 flex-1"
+                />
+                <button
+                  className="px-3 py-2 bg-[#25ABB9] text-white rounded"
+                  onClick={() => {
+                    if (loadedQuoteId) {
+                      updateExistingQuote(loadedQuoteId)
+                      const raw = localStorage.getItem("cq_saved_quotes")
+                      const arr = raw ? (JSON.parse(raw) as SavedQuote[]) : []
+                      const updated = arr.map((q) => (q.id === loadedQuoteId ? { ...q, name: quoteName } : q))
+                      persistSavedQuotes(updated)
+                    } else {
+                      saveOrCreateQuote({ nameOverride: quoteName })
+                    }
+                  }}
+                >
+                  Guardar nombre
+                </button>
+              </div>
+            </div>
+            {/* --- fin sección cotizaciones --- */}
+
             <div className="space-y-3 pb-6">
               <h2 className="text-2xl font-bold text-[#25ABB9]">Parámetros de Simulación</h2>
             </div>
@@ -526,10 +752,6 @@ export default function CashFlowSimulator() {
                             <Select
                               value={it.productId}
                               onValueChange={(v) => {
-                                // Prioridad de precio al seleccionar producto:
-                                // 1) precio de la zona seleccionada (si existe y no es "otro")
-                                // 2) precio por defecto del producto (primer precio válido)
-                                // 3) conservar manualPrice previo
                                 const zonePrice = it.zoneId && it.zoneId !== "otro" ? getZonePrice(v, it.zoneId) : undefined
                                 const fallback = getDefaultZonePrice(v)
                                 updateItem(idx, {
@@ -823,7 +1045,7 @@ export default function CashFlowSimulator() {
                   <div className="w-full">
                     <MetricsCards
                       investment={totalInvestmentComputed}
-                      years={Number.parseInt(years)} // ahora representa meses
+                      years={Number.parseInt(years)} 
                       selections={items}
                       simulationVersion={simulationVersion}
                       onApplySuggestion={(updated) => {

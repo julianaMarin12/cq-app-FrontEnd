@@ -44,13 +44,11 @@ export default function PrintPage() {
       setTotalMachinesInvestment(parsed.machinesInvestment || 0)
       setTotalInvestment(parsed.totalInvestment || 0)
 
-      // Escribir también un estado de simulación para que al volver se restaure la UI
       try {
         const simState = {
           categoria: "",
           linea: "",
           sublinea: "",
-          // Estimamos "investment" como total - máquinas (si está disponible)
           investment: String((parsed.totalInvestment || 0) - (parsed.machinesInvestment || 0)),
           years: String(parsed.years || ""),
           items: parsed.items || [],
@@ -62,7 +60,6 @@ export default function PrintPage() {
         }
         sessionStorage.setItem("cq_simulation_state", JSON.stringify(simState))
       } catch {
-        // ignore
       }
     } catch {
     } finally {
@@ -88,7 +85,6 @@ export default function PrintPage() {
 
   const formatCurrency = (v?: number) =>
     v == null ? "-" : `$${Number(v).toLocaleString("es-ES", { maximumFractionDigits: 0 })}`
-  // Extrae unidades e indica si la descripción refiere a cápsulas
   const parseUnitsInfoFromDescription = (desc?: string): { count?: number; isCapsule?: boolean } => {
     if (!desc) return {}
     const unitWords = "(cápsulas|capsulas|caps|cápsula|capsula|uds|unidades|comprimidos|tabletas|comprimido|tableta)"
@@ -118,7 +114,6 @@ export default function PrintPage() {
   const formatCurrencyDecimals = (v?: number) =>
     v == null ? "-" : `$${Number(v).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-  // Nuevo handler para volver: asegura que el estado de simulación está guardado y recarga la página principal
   const handleBack = () => {
     try {
       const simState = {
@@ -136,13 +131,10 @@ export default function PrintPage() {
       }
       sessionStorage.setItem("cq_simulation_state", JSON.stringify(simState))
     } catch {
-      // ignore
     }
-    // FORZAR recarga completa para que la página principal monte y restaure desde sessionStorage
     try {
       window.location.href = "/"
     } catch {
-      // fallback a router si por algún motivo no está disponible
       try { router.push("/") } catch {}
     }
   }
@@ -231,7 +223,6 @@ export default function PrintPage() {
                  const product = productsDatabase.find((p) => p.id === it.productId)
                  const desc = product ? product.description : it.productId
                  const price = resolvePrice(it)
-                 // detectar unidades y cápsulas a partir de la descripción del producto
                  const unitsInfo = parseUnitsInfoFromDescription(product?.description)
                  const unitsCount = unitsInfo.count
                  const isCapsule = !!unitsInfo.isCapsule
