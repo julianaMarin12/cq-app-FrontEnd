@@ -1381,8 +1381,8 @@
     "baseCost2024": 27740,
     "annualIncrease": 0.05,
     "categoria": "5 - OTROS",
-    "linea": " MATERIA PRIMA",
-    "sublinea": "MATERIA PRIMA",
+    "linea": " 01 - MATERIA PRIMA",
+    "sublinea": " 01 - MATERIA PRIMA",
     "prices": { "zona1": 61369, "zona2": 65665 }
   },
   {
@@ -1392,8 +1392,8 @@
     "baseCost2024":47120,
     "annualIncrease": 0.05,
     "categoria": "5 - OTROS",
-    "linea": " MATERIA PRIMA",
-    "sublinea": "MATERIA PRIMA",
+    "linea": " 01 - MATERIA PRIMA",
+    "sublinea": " 01 - MATERIA PRIMA",
     "prices": { "zona1": 83384, "zona2": 89220 }
   }
 ]
