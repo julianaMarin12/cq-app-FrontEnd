@@ -1383,7 +1383,7 @@
     "categoria": "5 - OTROS",
     "linea": " MATERIA PRIMA",
     "sublinea": "MATERIA PRIMA",
-    "prices": { "zona1": 61369, "zona2": 61369 }
+    "prices": { "zona1": 61369, "zona2": 65665 }
   },
   {
     "id": "MEZCLA_ACHOCOLATADA_X_1500_GR",
@@ -1394,6 +1394,6 @@
     "categoria": "5 - OTROS",
     "linea": " MATERIA PRIMA",
     "sublinea": "MATERIA PRIMA",
-    "prices": { "zona1": 83384, "zona2": 83384 }
+    "prices": { "zona1": 83384, "zona2": 89220 }
   }
 ]
