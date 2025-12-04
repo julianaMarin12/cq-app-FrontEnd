@@ -1373,5 +1373,27 @@
     "linea": "113 - CAFÉ GOURMET",
     "sublinea": "1132 - CAFÉ GOURMET GRANO",
     "prices": { "zona1": 29591, "zona2": 31663 }
+  },
+  {
+    "id": "BASE_LACTEA_BEC_X_1000_GR",
+    "description": "BASE LACTEA BEC X 1000 GR",
+    "unit": "L.M",
+    "baseCost2024": 27740,
+    "annualIncrease": 0.05,
+    "categoria": " 5 - OTROS",
+    "linea": " MATERIA PRIMA",
+    "sublinea": "MATERIA PRIMA",
+    "prices": { "zona1": 61369, "zona2": 61369 }
+  },
+  {
+    "id": "MEZCLA_ACHOCOLATADA_X_1500_GR",
+    "description": "MEZCLA ACHOCOLATADA X 1500 GR.",
+    "unit": "L.M",
+    "baseCost2024":47120,
+    "annualIncrease": 0.05,
+    "categoria": " 5 - OTROS",
+    "linea": " MATERIA PRIMA",
+    "sublinea": "MATERIA PRIMA",
+    "prices": { "zona1": 83384, "zona2": 83384 }
   }
 ]

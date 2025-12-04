@@ -44,6 +44,19 @@ interface SavedQuote {
   }
 }
 
+// --- NUEVOS HELPERS: id y fábrica de item ---
+const generateId = () => `i_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+const createEmptyItem = () =>
+  ({
+    productId: "",
+    zoneId: "",
+    quantity: 1,
+    manualPrice: undefined,
+    // flag opcional que usan algunas partes: mantener compatibilidad
+    editPrice: false,
+    localId: generateId(),
+  } as ProductSelection & { localId: string; editPrice?: boolean })
+
 export default function CashFlowSimulator() {
 	const router = useRouter()
 
@@ -57,8 +70,9 @@ export default function CashFlowSimulator() {
 
   const [simulationVersion, setSimulationVersion] = useState(0)
 
-  const [items, setItems] = useState<ProductSelection[]>([
-    { productId: "", zoneId: "", quantity: 1, manualPrice: undefined },
+  // items con localId para keys estables y evitar que inputs se mezclen
+  const [items, setItems] = useState<(ProductSelection & { localId?: string; editPrice?: boolean })[]>([
+    createEmptyItem(),
   ])
 
   const [machinesSelected, setMachinesSelected] = useState<{ machineId: string; quantity: number }[]>([])
@@ -82,7 +96,8 @@ export default function CashFlowSimulator() {
     setCategoria(newCategoria)
     setLinea("")
     setSublinea("")
-    setItems([{ productId: "", zoneId: "", quantity: 1 }])
+    // crear item vacío con localId
+    setItems([createEmptyItem()])
   }
 
   const handleLineaChange = (newLinea: string) => {
@@ -131,16 +146,17 @@ export default function CashFlowSimulator() {
     setInvestment(value)
   }
 
-  const updateItem = (index: number, patch: Partial<ProductSelection>) => {
-    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)))
+  // actualizar por localId (estable) - ahora tolera undefined
+  const updateItem = (localId?: string, patch?: Partial<ProductSelection>) => {
+    if (!localId || !patch) return
+    setItems((prev) => prev.map((it) => (it.localId === localId ? { ...it, ...patch } : it)))
   }
 
-  const addItem = () => {
-    setItems((prev) => [...prev, { productId: "", zoneId: "", quantity: 1, editPrice: false }])
-  }
+  const addItem = () => setItems((prev) => [...prev, createEmptyItem()])
 
-  const removeItem = (index: number) => {
-    setItems((prev) => prev.filter((_, i) => i !== index))
+  const removeItem = (localId?: string) => {
+    if (!localId) return
+    setItems((prev) => prev.filter((it) => it.localId !== localId))
   }
 
   const addMachine = () => {
@@ -239,7 +255,7 @@ export default function CashFlowSimulator() {
     setSublinea("")
     setInvestment("")
     setYears("")
-    setItems([{ productId: "", zoneId: "", quantity: 1, editPrice: false }])
+    setItems([createEmptyItem()])
     setMachinesSelected([])
     setShowResults(false)
     setLastIrr(null)
@@ -251,6 +267,7 @@ export default function CashFlowSimulator() {
     }
   }
 
+  // --- RESTAURAR ESTADO GUARDADO AL MONTAR ---
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("cq_simulation_state")
@@ -261,7 +278,12 @@ export default function CashFlowSimulator() {
       setSublinea(s.sublinea ?? "")
       setInvestment(s.investment ?? "")
       setYears(s.years ?? "")
-      setItems((s.items && s.items.length) ? s.items : [{ productId: "", zoneId: "", quantity: 1 }])
+      // asegurar localId en cada item restaurado
+      setItems(
+        (s.items && s.items.length)
+          ? s.items.map((it: any) => ({ ...it, localId: it.localId ?? generateId() }))
+          : [createEmptyItem()]
+      )
       setMachinesSelected(s.machinesSelected ?? [])
       setMachinePicker(s.machinePicker ?? "")
       setShowResults(!!s.showResults)
@@ -434,6 +456,7 @@ export default function CashFlowSimulator() {
       const arr = raw ? (JSON.parse(raw) as SavedQuote[]) : []
       const id = loadedQuoteId ?? `q_${Date.now()}`
       const name = opts?.nameOverride ?? (quoteName || (loadedQuoteId ? (arr.find((q) => q.id === loadedQuoteId)?.name ?? `Cotización`) : `Cotización ${arr.length + 1}`))
+      // buildCurrentPayload ya incluye items (con localId)
       const quote: SavedQuote = {
         id,
         name,
@@ -469,7 +492,12 @@ export default function CashFlowSimulator() {
       setSublinea(p.sublinea ?? "")
       setInvestment(p.investment ?? "")
       setYears(p.years ?? "")
-      setItems(p.items && p.items.length ? p.items : [{ productId: "", zoneId: "", quantity: 1 }])
+      // asegurar localId al cargar cotización
+      setItems(
+        p.items && p.items.length
+          ? p.items.map((it: any) => ({ ...it, localId: it.localId ?? generateId() }))
+          : [createEmptyItem()]
+      )
       setMachinesSelected(p.machinesSelected ?? [])
       setMachinePicker(p.machinePicker ?? "")
       setShowResults(!!p.showResults)
@@ -644,7 +672,7 @@ export default function CashFlowSimulator() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setItems([{ productId: "", zoneId: "", quantity: 1, editPrice: false }])}
+                      onClick={() => setItems([createEmptyItem()])}
                       className="h-9 w-9 p-0 flex items-center justify-center"
                       title="Limpiar productos"
                     >
@@ -655,9 +683,9 @@ export default function CashFlowSimulator() {
 
                 <div className="space-y-3">
                   {items.map((it, idx) => {
-                    const itemLineas = it.categoria ? getLineasByCategoria(it.categoria) : []
-                    const itemSublineas = it.categoria && it.linea ? getSublineasByLinea(it.categoria, it.linea) : []
-                    const availableProducts =
+                     const itemLineas = it.categoria ? getLineasByCategoria(it.categoria) : []
+                     const itemSublineas = it.categoria && it.linea ? getSublineasByLinea(it.categoria, it.linea) : []
+                     const availableProducts =
                       it.categoria && it.linea && it.sublinea
                         ? getProductsByFilters(it.categoria, it.linea, it.sublinea)
                         : productsDatabase 
@@ -676,19 +704,19 @@ export default function CashFlowSimulator() {
                         : undefined
 
                     return (
-                      <div key={idx}>
+                      <div key={it.localId ?? idx}>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-3 items-end">
                           <div>
                             <Label className="text-sm font-semibold">Categoría</Label>
                             <Select
                               value={it.categoria ?? ""}
                               onValueChange={(v) =>
-                                updateItem(idx, {
-                                  categoria: v === "__none" ? undefined : v,
-                                  linea: undefined,
-                                  sublinea: undefined,
-                                  productId: "",
-                                })
+                                updateItem(it.localId, {
+                                   categoria: v === "__none" ? undefined : v,
+                                   linea: undefined,
+                                   sublinea: undefined,
+                                   productId: "",
+                                 })
                               }
                             >
                               <SelectTrigger className="w-full h-11">
@@ -710,7 +738,7 @@ export default function CashFlowSimulator() {
                             <Select
                               value={it.linea ?? ""}
                               onValueChange={(v) =>
-                                updateItem(idx, { linea: v === "" ? undefined : v, sublinea: undefined, productId: "" })
+                                updateItem(it.localId, { linea: v === "" ? undefined : v, sublinea: undefined, productId: "" })
                               }
                               disabled={!it.categoria}
                             >
@@ -731,7 +759,7 @@ export default function CashFlowSimulator() {
                             <Label className="text-sm font-semibold">Sublínea</Label>
                             <Select
                               value={it.sublinea ?? ""}
-                              onValueChange={(v) => updateItem(idx, { sublinea: v === "" ? undefined : v, productId: "" })}
+                              onValueChange={(v) => updateItem(it.localId, { sublinea: v === "" ? undefined : v, productId: "" })}
                               disabled={!it.linea}
                             >
                               <SelectTrigger className="w-full h-11">
@@ -754,7 +782,7 @@ export default function CashFlowSimulator() {
                               onValueChange={(v) => {
                                 const zonePrice = it.zoneId && it.zoneId !== "otro" ? getZonePrice(v, it.zoneId) : undefined
                                 const fallback = getDefaultZonePrice(v)
-                                updateItem(idx, {
+                                updateItem(it.localId, {
                                   productId: v,
                                   manualPrice: zonePrice ?? fallback ?? it.manualPrice,
                                 })
@@ -780,7 +808,7 @@ export default function CashFlowSimulator() {
                               value={it.zoneId}
                               onValueChange={(v) => {
                                 const defaultPrice = v === "otro" ? undefined : getZonePrice(it.productId, v)
-                                updateItem(idx, {
+                                updateItem(it.localId, {
                                   zoneId: v,
                                   manualPrice: v === "otro" ? undefined : defaultPrice !== undefined ? defaultPrice : it.manualPrice,
                                 })
@@ -809,8 +837,11 @@ export default function CashFlowSimulator() {
                               type="number"
                               min={1}
                               value={String(it.quantity)}
-                              onChange={(e) => updateItem(idx, { quantity: Math.max(1, Number(e.target.value || 1)) })}
+                              onChange={(e) => updateItem(it.localId, { quantity: Math.max(1, Number(e.target.value || 1)) })}
                               className="h-10 w-35"
+                              autoComplete="off"
+                              name={`qty_${it.localId}`}
+                              id={`qty_${it.localId}`}
                             />
                           </div>
 
@@ -826,9 +857,12 @@ export default function CashFlowSimulator() {
                                     value={it.manualPrice !== undefined ? formatCurrencyForInput(it.manualPrice) : ""}
                                     onChange={(e) => {
                                       const parsed = parseCurrencyInput(e.target.value)
-                                      updateItem(idx, { manualPrice: parsed })
+                                      updateItem(it.localId, { manualPrice: parsed })
                                     }}
                                     className="h-11 pl-8 w-full"
+                                    autoComplete="off"
+                                    name={`price_${it.localId}`}
+                                    id={`price_${it.localId}`}
                                   />
                                 </div>
                               </div>
@@ -837,7 +871,7 @@ export default function CashFlowSimulator() {
                                 <Button
                                   size="sm"
                                   variant="destructive"
-                                  onClick={() => removeItem(idx)}
+                                  onClick={() => removeItem(it.localId)}
                                   className="h-11 w-11 p-0 flex items-center justify-center"
                                   title="Quitar"
                                 >
@@ -1049,9 +1083,67 @@ export default function CashFlowSimulator() {
                       selections={items}
                       simulationVersion={simulationVersion}
                       onApplySuggestion={(updated) => {
-                        setItems(updated)
+                        const suggestions = Array.isArray(updated) ? updated : [updated]
+                        setItems((prev) => {
+                          const out = prev.map((p) => ({ ...p })) // copia
+                          suggestions.forEach((s: any, si: number) => {
+                            let idx = -1
+                            if (s && s.localId) idx = out.findIndex((r) => r.localId === s.localId)
+                            if (idx === -1 && s && s.productId) idx = out.findIndex((r) => r.productId === s.productId)
+                            if (idx === -1 && suggestions.length === out.length) idx = si
+                            if (idx === -1) return
+
+                            const target = out[idx]
+                            const newItem: any = { ...target }
+
+                            // 1) Aplicar cantidad si viene explícita
+                            if (s && (s.quantity !== undefined || s.qty !== undefined || s.units !== undefined)) {
+                              const q = s.quantity ?? s.qty ?? s.units
+                              const nq = Number(String(q).replace(/[^\d\-.,]/g, "").replace(",", "."))
+                              if (Number.isFinite(nq)) newItem.quantity = Math.max(1, Math.round(nq))
+                            }
+
+                            // 2) Aplicar precio si viene explícito
+                            if (s && (s.manualPrice !== undefined || s.unitPrice !== undefined || s.price !== undefined)) {
+                              const pval = s.manualPrice ?? s.unitPrice ?? s.price
+                              const np = typeof pval === "number" ? pval : Number(String(pval).replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."))
+                              if (Number.isFinite(np)) newItem.manualPrice = np
+                            }
+
+                            // 3) Si no hay campos claros, intentar parsear texto tipo "5 -> 7" o "$45.045 -> $57.785"
+                            if (
+                              !("quantity" in s) &&
+                              !("qty" in s) &&
+                              !("units" in s) &&
+                              !("manualPrice" in s) &&
+                              !("unitPrice" in s) &&
+                              !("price" in s)
+                            ) {
+                              const text = String(s.description ?? s.label ?? s.text ?? "")
+                              const arrowRe = /(?:\$?\s*)([\d\.,]+)\s*->\s*(?:\$?\s*)([\d\.,]+)/g
+                              const m = arrowRe.exec(text)
+                              if (m) {
+                                const toStr = m[2]
+                                const clean = toStr.replace(/\./g, "").replace(",", ".")
+                                const num = Number(clean)
+                                if (Number.isFinite(num)) {
+                                  if (/\$/.test(text)) {
+                                    newItem.manualPrice = num
+                                  } else {
+                                    newItem.quantity = Math.max(1, Math.round(num))
+                                  }
+                                }
+                              }
+                            }
+
+                            // mantener localId original
+                            newItem.localId = target.localId ?? newItem.localId ?? generateId()
+                            out[idx] = newItem
+                          })
+                          return out
+                        })
                       }}
-                    />
+                     />
                   </div>
 
                 </div>
