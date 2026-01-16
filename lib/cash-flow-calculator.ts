@@ -155,8 +155,6 @@ export function generateCashFlowData(
       cumulativeCashFlow: Math.round(cumulative),
     })
 
-    // avanzar un mes: convertir aumento anual a factor mensual efectivo
-    // Nota: no aplicar incremento al costo — `currentCost` debe mantenerse como el costo real del año
     states.forEach((s) => {
       const monthlyFactor = Math.pow(1 + s.annualIncrease, 1 / 12)
       s.currentPrice = s.currentPrice * monthlyFactor
