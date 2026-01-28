@@ -2210,5 +2210,33 @@
       "zona1": 193188.776,
       "zona2": 206711.9903
     }
+  },
+  {
+    "id": "BASE LACTEA BEC X 1000G",
+    "description": "BASE LACTEA BEC X 1000G",
+    "unit": "L.M",
+    "baseCost2024": 30900,
+    "annualIncrease": 0.05,
+    "categoria": "5 - OTROS",
+    "linea": "017 - GRANOS, HARINAS Y VERDURAS",
+    "sublinea": "BASE LACTEA BEC X 1000G",
+    "prices": {
+      "zona1":61369,
+      "zona2": 65664.83
+    }
+  },
+  {
+    "id": "MEZCLA ACHOCOLOTADA X 1500G",
+    "description": "MEZCLA ACHOCOLOTADA X 1500G",
+    "unit": "L.M",
+    "baseCost2024": 52250,
+    "annualIncrease": 0.05,
+    "categoria": "5 - OTROS",
+    "linea": "017 - GRANOS, HARINAS Y VERDURAS",
+    "sublinea": "MEZCLA ACHOCOLOTADA X 1500G",
+    "prices": {
+      "zona1": 83384,
+      "zona2": 89220.88
+    }
   }
 ]

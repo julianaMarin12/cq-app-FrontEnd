@@ -164,8 +164,6 @@ export function generateCashFlowData(
   return data
 }
 
-/* Agregado: helper para calcular IRR (devuelve decimal, p.ej. 0.12 => 12%) */
-/* usando la misma aproximación (Newton + bisección) extraída */
 function computeIrrFromCashFlows(cashFlows: number[]): number {
   const npvAtRate = (rate: number) => {
     if (!isFinite(rate) || rate <= -0.999999) return Number.POSITIVE_INFINITY
